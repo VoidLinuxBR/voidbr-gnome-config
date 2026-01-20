@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
 <application-state>
   <context id="">
-    <application id="org.remmina.Remmina.desktop" score="0" last-seen="1709235152"/>
-    <application id="gnome-background-panel.desktop" score="0" last-seen="0"/>
-    <application id="org.gnome.Settings.desktop" score="0" last-seen="1709235166"/>
-    <application id="org.gnome.Calendar.desktop" score="0" last-seen="1709234729"/>
-    <application id="xfce4-terminal.desktop" score="22" last-seen="1709235136"/>
+    <application id="com.mattjakeman.ExtensionManager.desktop" score="18" last-seen="1768950706"/>
+    <application id="org.gnome.tweaks.desktop" score="26" last-seen="1768950772"/>
+    <application id="org.gnome.Settings.desktop" score="2071" last-seen="1768950779"/>
+    <application id="yelp.desktop" score="2" last-seen="1768890070"/>
+    <application id="xfce4-terminal.desktop" score="35" last-seen="1768890648"/>
   </context>
 </application-state>
