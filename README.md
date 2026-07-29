@@ -1,3 +1,3 @@
-# voidbr-config-gnome-custom
+# voidbr-config-gnome
 
-Skel config for Void Linux GNOME Meta Package
+Skel config for VoidBR GNOME Meta Package

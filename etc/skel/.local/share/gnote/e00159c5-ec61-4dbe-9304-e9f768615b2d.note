@@ -1,9 +1,0 @@
-<?xml version="1.0"?>
-<note version="0.3" xmlns:link="http://beatniksoftware.com/tomboy/link" xmlns:size="http://beatniksoftware.com/tomboy/size" xmlns="http://beatniksoftware.com/tomboy"><title>Utilizando links no Gnote</title><text xml:space="preserve"><note-content>Utilizando links no Gnote
-
-Notas no Gnote podem ser vinculadas ao destacar o texto na nota atual e clicar no botão <bold>Link</bold> na barra de ferramentas. Isso criará uma nova nota e o título da nota atual ficará sublinhado.
-
-Modificações no título de uma nota atualizará os links presentes em outras notas. Isto previne a ocorrência de links quebrados quando uma nota for renomeada.
-
-Além disso, se você digitar o nome de outra nota na sua nota atual, o link será automaticamente estabelecido para você.</note-content></text><last-change-date>2026-01-20T06:22:07,463359Z</last-change-date><last-metadata-change-date>2026-01-20T06:22:07,463359Z</last-metadata-change-date><create-date>2026-01-20T06:22:07,463145Z</create-date><cursor-position>-1</cursor-position><selection-bound-position>-1</selection-bound-position><width>0</width><height>0</height></note>
-
