@@ -12,29 +12,33 @@ source=("git+${url}.git")
 md5sums=('SKIP')
 makedepends=()
 depends=()
+backup=()
 
 package() {
-	cd "${srcdir}/${pkgname}"
+  # Verify default folder
+  if [ -d "${srcdir}/${pkgname}/${pkgname}" ]; then
+    InternalDir="${srcdir}/${pkgname}/${pkgname}"
+  elif [ -d "${srcdir}/${pkgname}" ]; then
+    InternalDir="${srcdir}/${pkgname}"
+  else
+    #local
+    InternalDir="${WORKDIR}"
+  fi
 
-	# Verify default folder
-	if [ -d "${srcdir}/${pkgname}/${pkgname}" ]; then
-		InternalDir="${srcdir}/${pkgname}/${pkgname}"
-	else
-		InternalDir="${srcdir}/${pkgname}"
-	fi
+  cd "${InternalDir}"
+  # Copiar a estrutura de /etc, /usr e /opt para /
+  local dirs=("boot" "etc" "opt" "usr" "var")
+  for dir in "${dirs[@]}"; do
+    if [ -d "${InternalDir}/${dir}" ]; then
+      cp -a "${InternalDir}/${dir}" "${pkgdir}/"
+    fi
+  done
 
-	# Copiar a estrutura de /etc, /usr e /opt para /
-	local dirs=("usr" "etc" "opt")
-	for dir in "${dirs[@]}"; do
-		if [ -d "${InternalDir}/${dir}" ]; then
-			cp -a "${InternalDir}/${dir}" "${pkgdir}/"
-		fi
-	done
+  # Install license file if present
+  [ -f "LICENSE" ] && install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  # Install documentation if present
+  [ -f "README.md" ] && install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
 
-	# Install license file if present
-	[ -f "LICENSE" ] && install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
-	# Install documentation if present
-	[ -f "README.md" ] && install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
 }
 
 pre_install() {
@@ -42,7 +46,12 @@ pre_install() {
 }
 
 post_install() {
-	log "Finalizando instalação"
+  if [ "${update:-}" = "yes" ]; then
+    log "Finalizando upgrade"
+  else
+    log "Finalizando instalação"
+  fi
+
 }
 
 pre_upgrade() {
@@ -50,5 +59,5 @@ pre_upgrade() {
 }
 
 post_upgrade() {
-	log "Finalizando upgrade"
+	post_install
 }
