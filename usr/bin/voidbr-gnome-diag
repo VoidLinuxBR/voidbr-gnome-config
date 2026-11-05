@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# voidbr-gnome-diag - mede o tempo do login do GNOME e liga/desliga as extensões
+# voidbr-gnome-diag - mede o tempo do login do GNOME e acha qual extensão atrasa
 #
 # Copyright (c) 2026, Vilmar Catafesta <vcatafesta@gmail.com>
 # Copyright (c) 2026, VoidLinuxBR Team
 # SPDX-License-Identifier: MIT
 #
 # Uso:
-#   voidbr-gnome-diag            mostra o tempo do último login
-#   voidbr-gnome-diag sem        desliga todas as extensões (vale no próximo login)
-#   voidbr-gnome-diag com        religa as extensões (vale no próximo login)
+#   voidbr-gnome-diag          mostra o tempo do login atual
+#   voidbr-gnome-diag teste    mede uma extensão por login (rode, relogue, rode de novo...)
+#   voidbr-gnome-diag sem      desliga todas as extensões (vale no próximo login)
+#   voidbr-gnome-diag com      religa as extensões (vale no próximo login)
+
+export LC_NUMERIC=C
 
 log="${HOME}/.local/share/sddm/wayland-session.log"
+state="${XDG_CACHE_HOME:-$HOME/.cache}/voidbr-gnome-diag"
 
 if [ -t 1 ]; then
 	green=$'\e[1;32m'
@@ -22,43 +26,47 @@ else
 	green='' yellow='' red='' cyan='' reset=''
 fi
 
-# hora "HH:MM:SS.mmm" da primeira linha do log que casa com o padrão
-hora_no_log() {
-	grep -m1 -E "$1" "$log" | grep -oE '[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+' | head -n1
+die() {
+	echo "${red}$*${reset}" >&2
+	exit 1
 }
 
-# segundos (com fração) desde a meia-noite
-segundos() {
-	local h m s
-	IFS=: read -r h m s <<<"$1"
-	awk -v h="$h" -v m="$m" -v s="$s" 'BEGIN { printf "%.3f", h * 3600 + m * 60 + s }'
+# início do processo em segundos desde a época (com centésimos), via /proc
+inicio_processo() {
+	local pid="$1" btime ticks
+	btime=$(awk '/^btime/ { print $2 }' /proc/stat)
+	ticks=$(getconf CLK_TCK)
+	awk -v b="$btime" -v t="$ticks" '{ sub(/^.*\) /, ""); printf "%.2f", b + $20 / t }' "/proc/$pid/stat"
+}
+
+# hora "HH:MM:SS.mmm" do log -> segundos desde a época, no dia do início da sessão
+hora_epoch() {
+	local dia="$1" hora="$2"
+	date -d "$dia $hora" +%s.%N
+}
+
+# mede o login atual; imprime "inicio shell pronto" (epoch) ou falha
+medir() {
+	local pid t0 dia shell pronto
+	[ -r "$log" ] || return 1
+	pid=$(pgrep -o -u "$UID" -f gnome-session-binary) || return 1
+	t0=$(inicio_processo "$pid")
+	dia=$(date -d "@${t0%.*}" +%F)
+	shell=$(grep -m1 'Running GNOME Shell' "$log" | grep -oE '[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+' | head -n1)
+	pronto=$(grep -m1 'GNOME Shell started' "$log" | grep -oE '[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+' | head -n1)
+	[ -n "$shell" ] && [ -n "$pronto" ] || return 1
+	echo "$t0 $(hora_epoch "$dia" "$shell") $(hora_epoch "$dia" "$pronto")"
 }
 
 tempo() {
-	if [ ! -r "$log" ]; then
-		echo "${red}Log não encontrado:${reset} $log"
-		exit 1
-	fi
-
-	local inicio shell pronto
-	inicio=$(stat -c '%w' "$log" | grep -oE '[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}')
-	shell=$(hora_no_log 'Running GNOME Shell')
-	pronto=$(grep -m1 'GNOME Shell started' "$log" | grep -oE '[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+' | head -n1)
-
-	if [ -z "$inicio" ] || [ -z "$shell" ] || [ -z "$pronto" ]; then
-		echo "${red}Não achei os horários no log.${reset} Faça login de novo e rode outra vez."
-		exit 1
-	fi
-
 	local t0 t1 t2
-	t0=$(segundos "$inicio")
-	t1=$(segundos "$shell")
-	t2=$(segundos "$pronto")
+	read -r t0 t1 t2 < <(medir) || die "Não achei os horários do login. Saia, entre na sessão e rode de novo."
+	[ -n "$t2" ] || die "Não achei os horários do login. Saia, entre na sessão e rode de novo."
 
-	echo "${cyan}Último login${reset}"
-	printf '  sessão aberta pelo SDDM ... %s\n' "$inicio"
-	printf '  GNOME Shell iniciando ..... %s  (+%.1f s)\n' "$shell" "$(awk -v a="$t1" -v b="$t0" 'BEGIN { print a - b }')"
-	printf '  área de trabalho pronta ... %s  (+%.1f s)\n' "$pronto" "$(awk -v a="$t2" -v b="$t1" 'BEGIN { print a - b }')"
+	echo "${cyan}Login atual${reset}"
+	printf '  sessão iniciada ........... %s\n' "$(date -d "@$t0" +%T.%2N)"
+	printf '  GNOME Shell iniciando ..... %s  (+%.1f s)\n' "$(date -d "@$t1" +%T.%2N)" "$(awk -v a="$t1" -v b="$t0" 'BEGIN { print a - b }')"
+	printf '  área de trabalho pronta ... %s  (+%.1f s)\n' "$(date -d "@$t2" +%T.%2N)" "$(awk -v a="$t2" -v b="$t1" 'BEGIN { print a - b }')"
 	printf '  %stotal: %.1f s%s\n' "$green" "$(awk -v a="$t2" -v b="$t0" 'BEGIN { print a - b }')" "$reset"
 
 	if [ "$(gsettings get org.gnome.shell disable-user-extensions)" = "true" ]; then
@@ -68,10 +76,61 @@ tempo() {
 	fi
 }
 
+# total (s) do login atual
+total_atual() {
+	local t0 t1 t2
+	read -r t0 t1 t2 < <(medir) || return 1
+	awk -v a="$t2" -v b="$t0" 'BEGIN { printf "%.1f", a - b }'
+}
+
+# teste: a cada login liga UMA extensão sozinha e anota o tempo
+teste() {
+	mkdir -p "$state"
+
+	if [ ! -f "$state/original" ]; then
+		# começo do teste: guarda a lista atual e mede o login sem nenhuma extensão
+		gsettings get org.gnome.shell enabled-extensions >"$state/original"
+		sed -e 's/^@as //' -e "s/[][' ]//g" "$state/original" | tr ',' '\n' | sed '/^$/d' >"$state/fila"
+		: >"$state/resultado"
+		echo "nenhuma" >"$state/atual"
+		gsettings set org.gnome.shell disable-user-extensions false
+		gsettings set org.gnome.shell enabled-extensions "[]"
+		echo "Teste iniciado: $(wc -l <"$state/fila") extensões para medir."
+		echo "${yellow}Saia e entre na sessão, depois rode de novo: voidbr-gnome-diag teste${reset}"
+		return
+	fi
+
+	local atual t proxima
+	atual=$(cat "$state/atual")
+	t=$(total_atual) || die "Não consegui medir este login. Saia, entre na sessão e rode de novo."
+	printf '%s %s\n' "$t" "$atual" >>"$state/resultado"
+	echo "medido: ${cyan}${atual}${reset} -> ${t} s"
+
+	proxima=$(head -n1 "$state/fila")
+	if [ -n "$proxima" ]; then
+		sed -i '1d' "$state/fila"
+		echo "$proxima" >"$state/atual"
+		gsettings set org.gnome.shell enabled-extensions "['$proxima']"
+		echo "próxima: ${cyan}${proxima}${reset} (faltam $(wc -l <"$state/fila") depois dela)"
+		echo "${yellow}Saia e entre na sessão, depois rode de novo: voidbr-gnome-diag teste${reset}"
+		return
+	fi
+
+	# fim: restaura a lista original e mostra a tabela
+	gsettings set org.gnome.shell enabled-extensions "$(cat "$state/original")"
+	local base
+	base=$(awk '$2 == "nenhuma" { print $1; exit }' "$state/resultado")
+	echo
+	echo "${cyan}Resultado (cada extensão sozinha)${reset}"
+	sort -rn "$state/resultado" | awk -v b="$base" '{ printf "  %6.1f s  (+%4.1f)  %s\n", $1, $1 - b, $2 }'
+	echo
+	echo "Extensões restauradas. Saia e entre na sessão para voltar ao normal."
+	rm -rf "$state"
+}
+
 case "${1:-}" in
-	"" | tempo)
-		tempo
-		;;
+	"" | tempo) tempo ;;
+	teste) teste ;;
 	sem)
 		gsettings set org.gnome.shell disable-user-extensions true
 		echo "Extensões ${yellow}desligadas${reset}. Saia e entre na sessão, depois rode: voidbr-gnome-diag"
@@ -81,7 +140,7 @@ case "${1:-}" in
 		echo "Extensões ${green}religadas${reset}. Saia e entre na sessão, depois rode: voidbr-gnome-diag"
 		;;
 	*)
-		echo "Uso: voidbr-gnome-diag [tempo|sem|com]"
+		echo "Uso: voidbr-gnome-diag [tempo|teste|sem|com]"
 		exit 1
 		;;
 esac
