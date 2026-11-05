@@ -3,7 +3,7 @@
 #
 #   voidbr-gnome-tweaks
 #   Created: qui 05 nov 2026 00:40:00 -04
-#   Altered: qui 05 nov 2026 12:55:00 -04
+#   Altered: qui 05 nov 2026 13:50:00 -04
 #
 #   Copyright (c) 2026, Vilmar Catafesta <vcatafesta@gmail.com>
 #   Copyright (c) 2026, VoidLinuxBR Team
@@ -19,6 +19,9 @@
 #   - v1.1 (2026-11-05): Botão Clássico (Dash to Dock): visual do VoidBR com a
 #     barra do GNOME no topo e o Dash to Dock embaixo; Dash to Dock na lista de
 #     extensões; --padrao-classico na linha de comando.
+#   - v1.2 (2026-11-05): Botões da barra de título (minimizar/maximizar/fechar)
+#     voltam a seguir o tema do sistema; o estilo escuro dos botões fica só no
+#     conteúdo da janela.
 #
 #   Redistribution and use in source and binary forms, with or without
 #   modification, are permitted provided that the following conditions
@@ -74,7 +77,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Pango", "1.0")
 from gi.repository import Gtk, GLib, Gio, Pango
 
-VERSAO = "1.1"
+VERSAO = "1.2"
 APP_ID = "org.voidbr.GnomeTweaks"
 
 CONFIG = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
@@ -145,18 +148,18 @@ label { color: #f1f1f1; }
 .dica { color: #8a8fa8; font-size: 11px; }
 .secao { color: #7aa2f7; font-weight: bold; margin-top: 6px; }
 .aviso { color: #e0af68; }
-.botao-verde { background: linear-gradient(180deg, #34d399, #059669); color: white;
+.conteudo button.botao-verde, .botao-verde { background: linear-gradient(180deg, #34d399, #059669); color: white;
     font-weight: bold; border-radius: 10px; padding: 10px 14px; }
-.botao-verde:hover { background: #34d399; }
-.botao-laranja { background: linear-gradient(180deg, #fbbf24, #d97706); color: white;
+.conteudo button.botao-verde:hover, .botao-verde:hover { background: #34d399; }
+.conteudo button.botao-laranja, .botao-laranja { background: linear-gradient(180deg, #fbbf24, #d97706); color: white;
     font-weight: bold; border-radius: 10px; padding: 10px 14px; }
-.botao-laranja:hover { background: #fbbf24; }
-.botao-azul { background: linear-gradient(180deg, #60a5fa, #2563eb); color: white;
+.conteudo button.botao-laranja:hover, .botao-laranja:hover { background: #fbbf24; }
+.conteudo button.botao-azul, .botao-azul { background: linear-gradient(180deg, #60a5fa, #2563eb); color: white;
     font-weight: bold; border-radius: 10px; padding: 10px 14px; }
-.botao-azul:hover { background: #60a5fa; }
-.botao-roxo { background: linear-gradient(180deg, #a78bfa, #7c3aed); color: white;
+.conteudo button.botao-azul:hover, .botao-azul:hover { background: #60a5fa; }
+.conteudo button.botao-roxo, .botao-roxo { background: linear-gradient(180deg, #a78bfa, #7c3aed); color: white;
     font-weight: bold; border-radius: 10px; padding: 10px 14px; }
-.botao-roxo:hover { background: #a78bfa; }
+.conteudo button.botao-roxo:hover, .botao-roxo:hover { background: #a78bfa; }
 .caixa-status { background-color: #2a2b3a; border-radius: 10px; padding: 8px; }
 .cabecalho-app { background-color: #1a1b26; color: #f1f1f1; }
 .botao-fonte { font-weight: bold; padding: 2px 10px; min-height: 24px; background: #3b3d52;
@@ -167,10 +170,10 @@ label { color: #f1f1f1; }
 notebook > header, notebook > stack, scrolledwindow, viewport { background-color: #24283b; }
 notebook > header tab label { color: #a9b1d6; }
 notebook > header tab:checked label { color: #ffffff; }
-button { background: #3b3d52; color: #f1f1f1; border: 1px solid #4b4e66; }
-button label { color: #f1f1f1; }
-dropdown button, button.font { background: #3b3d52; color: #f1f1f1; border: 1px solid #4b4e66; }
-dropdown button label, button.font label { color: #f1f1f1; }
+/* só os botões do conteúdo: os da barra de título (minimizar/maximizar/fechar)
+   ficam com o tema do sistema */
+.conteudo button { background: #3b3d52; color: #f1f1f1; border: 1px solid #4b4e66; }
+.conteudo button label { color: #f1f1f1; }
 popover contents, popover arrow { background-color: #2a2b3a; }
 textview.saida, textview.saida text { background-color: #16161e; color: #c0caf5;
     font-family: monospace; }
@@ -699,6 +702,7 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         self.aplicar_fonte()
 
         caixa = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        caixa.add_css_class("conteudo")
         for lado in ("top", "bottom", "start", "end"):
             getattr(caixa, f"set_margin_{lado}")(16)
         self.set_child(caixa)
