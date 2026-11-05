@@ -56,6 +56,10 @@ post_install() {
   # Ativa os padrões do /usr/share/glib-2.0/schemas/90_voidbr-gnome.gschema.override
   log "Compilando schemas do GSettings"
   glib-compile-schemas /usr/share/glib-2.0/schemas || true
+
+  # Padrões do dconf (/etc/dconf/db/local.d): GSConnect e mosaico do Forge desligados
+  log "Atualizando o banco do dconf"
+  dconf update || true
 }
 
 pre_upgrade() {

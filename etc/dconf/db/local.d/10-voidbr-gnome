@@ -1,0 +1,12 @@
+# VoidBR Linux - padrões do dconf para extensões que ficam no skel
+# (os schemas delas não estão em /usr/share/glib-2.0/schemas, então o
+#  gschema override não alcança; o banco de sistema "local" alcança).
+# O valor do usuário sempre vence. Depois de alterar: dconf update
+
+# GSConnect: extensão ligada (aparece nas configurações rápidas), serviço desligado
+[org/gnome/shell/extensions/gsconnect]
+enabled=false
+
+# Forge: extensão ligada, mosaico desligado (o usuário liga nas preferências do Forge)
+[org/gnome/shell/extensions/forge]
+tiling-mode-enabled=false
