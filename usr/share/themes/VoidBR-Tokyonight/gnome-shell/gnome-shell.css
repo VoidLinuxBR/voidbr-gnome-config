@@ -2,61 +2,84 @@
  * Herda o Tokyonight-Dark-Theme (pacote voidbr-tokyo-theme) e so desenha as
  * "ilhas" da barra do Dash to Panel. As bordas de item aberto usam
  * -st-accent-color, entao acompanham a cor escolhida em Configuracoes > Aparencia.
+ *
+ * Todas as regras comecam com #panel.dashtopanelMainPanel: o Tokyonight usa
+ * "#panel ..." e um seletor so de classe perderia para ele.
  */
 @import url("/usr/share/themes/Tokyonight-Dark-Theme/gnome-shell/gnome-shell.css");
 
+/* a barra em si fica invisivel (o Tokyonight desenha uma pilula com borda ciano) */
+#panel.dashtopanelMainPanel {
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+}
+
+/* o botao em volta de cada item fica transparente: quem aparece e a ilha */
+#panel.dashtopanelMainPanel .panel-button {
+  background-color: transparent;
+  box-shadow: none;
+}
+
 /* fundo comum de todas as ilhas (azul-noite do Tokyo Night) */
-.dashtopanelMainPanel .show-apps,
-.dashtopanelMainPanel #dashtopanelTaskbar,
-.dashtopanelMainPanel #panelRight,
-.dashtopanelMainPanel .panel-status-indicators-box,
-.dashtopanelMainPanel .clock-display {
+#panel.dashtopanelMainPanel .show-apps,
+#panel.dashtopanelMainPanel #dashtopanelTaskbar,
+#panel.dashtopanelMainPanel #panelRight,
+#panel.dashtopanelMainPanel .panel-status-indicators-box,
+#panel.dashtopanelMainPanel .panel-button.clock-display {
   background-color: rgba(26, 27, 38, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
 }
 
 /* ilha 1: botao de apps + lancadores */
-.dashtopanelMainPanel .show-apps {
+#panel.dashtopanelMainPanel .show-apps {
   margin-right: 6px;
 }
 
-.dashtopanelMainPanel #dashtopanelTaskbar {
+#panel.dashtopanelMainPanel #dashtopanelTaskbar {
   padding: 0 6px;
 }
 
-/* ilha 2: icones de extensoes (status-icons, gsconnect...) */
-.dashtopanelMainPanel #panelRight {
+/* ilha 2: icones de extensoes e teclado */
+#panel.dashtopanelMainPanel #panelRight {
   margin-left: 8px;
   padding: 0 6px;
 }
 
-/* ilha 3: bandeja (rede, som, bateria) */
-.dashtopanelMainPanel .panel-status-indicators-box {
+/* ilha 3: bandeja (rede, som, energia) numa ilha so */
+#panel.dashtopanelMainPanel .panel-status-indicators-box {
   margin-left: 8px;
-  padding: 0 12px;
+  padding: 0 10px;
 }
 
-/* ilha 4: relogio */
-.dashtopanelMainPanel .clock-display {
-  margin-left: 8px;
-  padding: 0 14px;
-}
-
-/* o botao em volta da bandeja/relogio fica transparente, so a ilha aparece */
-.dashtopanelMainPanel .panel-button {
+#panel.dashtopanelMainPanel .panel-status-indicators-box .system-status-icon {
   background-color: transparent;
   box-shadow: none;
 }
 
-.dashtopanelMainPanel .panel-button:hover .panel-status-indicators-box,
-.dashtopanelMainPanel .clock-display:hover {
+/* ilha 4: relogio */
+#panel.dashtopanelMainPanel .panel-button.clock-display {
+  margin-left: 8px;
+  padding: 0 6px;
+}
+
+/* hover: clareia a ilha inteira em vez de desenhar pilulas soltas */
+#panel.dashtopanelMainPanel .panel-button:hover,
+#panel.dashtopanelMainPanel .panel-button:hover.clock-display .clock {
+  box-shadow: none;
+}
+
+#panel.dashtopanelMainPanel .panel-button:hover .panel-status-indicators-box,
+#panel.dashtopanelMainPanel .panel-button.clock-display:hover {
   background-color: rgba(41, 46, 66, 0.92);
 }
 
 /* item aberto: borda na cor de destaque escolhida pelo usuario */
-.dashtopanelMainPanel .panel-button:checked .panel-status-indicators-box,
-.dashtopanelMainPanel .clock-display:checked,
-.dashtopanelMainPanel .show-apps:checked {
+#panel.dashtopanelMainPanel .panel-button:checked .panel-status-indicators-box,
+#panel.dashtopanelMainPanel .panel-button.clock-display:checked,
+#panel.dashtopanelMainPanel .show-apps:checked {
   border-color: -st-accent-color;
 }
