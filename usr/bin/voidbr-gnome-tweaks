@@ -3,7 +3,7 @@
 #
 #   voidbr-gnome-tweaks
 #   Created: qui 05 nov 2026 00:40:00 -04
-#   Altered: qui 05 nov 2026 00:40:00 -04
+#   Altered: qui 05 nov 2026 12:55:00 -04
 #
 #   Copyright (c) 2026, Vilmar Catafesta <vcatafesta@gmail.com>
 #   Copyright (c) 2026, VoidLinuxBR Team
@@ -16,6 +16,9 @@
 #     Aparência, Papel de parede (voidbr-change-gnome-wallpaper), Extensões e
 #     Diagnóstico (voidbr-gnome-diag). Botões Aplicar, Padrão VoidBR e
 #     Padrão GNOME.
+#   - v1.1 (2026-11-05): Botão Clássico (Dash to Dock): visual do VoidBR com a
+#     barra do GNOME no topo e o Dash to Dock embaixo; Dash to Dock na lista de
+#     extensões; --padrao-classico na linha de comando.
 #
 #   Redistribution and use in source and binary forms, with or without
 #   modification, are permitted provided that the following conditions
@@ -71,7 +74,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Pango", "1.0")
 from gi.repository import Gtk, GLib, Gio, Pango
 
-VERSAO = "1.0"
+VERSAO = "1.1"
 APP_ID = "org.voidbr.GnomeTweaks"
 
 CONFIG = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
@@ -100,6 +103,7 @@ S_GSCONNECT = "org.gnome.Shell.Extensions.GSConnect"
 S_FORGE = "org.gnome.shell.extensions.forge"
 
 UUID_DTP = "dash-to-panel@jderose9.github.com"
+UUID_DTD = "dash-to-dock@micxgx.gmail.com"
 UUID_THEME = "user-theme@gnome-shell-extensions.gcampax.github.com"
 UUID_TWEAKS = "voidbr-shell-tweaks@voidbr.org"
 UUID_GSCONNECT = "gsconnect@andyholmes.github.io"
@@ -111,6 +115,7 @@ TEMA_SHELL_SEM_ILHAS = "Tokyonight-Dark-Theme"
 # extensões mostradas na aba Extensões (uuid, nome, descrição)
 EXTENSOES = [
     (UUID_DTP, "Dash to Panel", "barra única com apps, bandeja e relógio"),
+    (UUID_DTD, "Dash to Dock", "dock embaixo, com a barra do GNOME no topo (Clássico)"),
     (UUID_THEME, "User Themes", "carrega o tema do Shell (ilhas)"),
     (UUID_TWEAKS, "VoidBR Shell Tweaks", "relógio em 2 linhas e login sem Visão Geral"),
     ("status-icons@gnome-shell-extensions.gcampax.github.com", "Status Icons",
@@ -149,6 +154,9 @@ label { color: #f1f1f1; }
 .botao-azul { background: linear-gradient(180deg, #60a5fa, #2563eb); color: white;
     font-weight: bold; border-radius: 10px; padding: 10px 14px; }
 .botao-azul:hover { background: #60a5fa; }
+.botao-roxo { background: linear-gradient(180deg, #a78bfa, #7c3aed); color: white;
+    font-weight: bold; border-radius: 10px; padding: 10px 14px; }
+.botao-roxo:hover { background: #a78bfa; }
 .caixa-status { background-color: #2a2b3a; border-radius: 10px; padding: 8px; }
 .cabecalho-app { background-color: #1a1b26; color: #f1f1f1; }
 .botao-fonte { font-weight: bold; padding: 2px 10px; min-height: 24px; background: #3b3d52;
@@ -527,6 +535,17 @@ def valores_gnome():
     }
 
 
+def valores_classico():
+    """Clássico: visual do VoidBR (Tokyonight) com a barra do GNOME no topo e o
+    Dash to Dock embaixo, no lugar do Dash to Panel em ilhas."""
+    v = valores_voidbr()
+    ext = dict(v["extensoes"])
+    ext[UUID_DTP] = False
+    ext[UUID_DTD] = True
+    v.update({"extensoes": ext, "ilhas": False, "relogio2": False, "sem_visao": True})
+    return v
+
+
 def aplicar(v, antes):
     """Grava só o que mudou em relação a `antes`. Retorna lista do que mudou."""
     feito = []
@@ -715,13 +734,16 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         b_gnome = Gtk.Button(label="🔵 Padrão GNOME")
         b_gnome.add_css_class("botao-azul")
         b_gnome.connect("clicked", self.ao_clicar_gnome)
+        b_classico = Gtk.Button(label="🧭 Clássico (Dash to Dock)")
+        b_classico.add_css_class("botao-roxo")
+        b_classico.connect("clicked", self.ao_clicar_classico)
         b_voidbr = Gtk.Button(label="↩️ Padrão VoidBR")
         b_voidbr.add_css_class("botao-laranja")
         b_voidbr.connect("clicked", self.ao_clicar_voidbr)
         self.b_aplicar = Gtk.Button(label="✅ Aplicar")
         self.b_aplicar.add_css_class("botao-verde")
         self.b_aplicar.connect("clicked", self.ao_clicar_aplicar)
-        for b in (b_gnome, b_voidbr, self.b_aplicar):
+        for b in (b_gnome, b_classico, b_voidbr, self.b_aplicar):
             linha.append(b)
         caixa.append(linha)
 
@@ -1024,6 +1046,19 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         self.mostrar_papel(c)
         self.papel_antes = antes
 
+    def ao_clicar_classico(self, *_):
+        if not extensao_instalada(UUID_DTD):
+            dlg = Gtk.AlertDialog(message="Dash to Dock não está instalado",
+                                  detail="Instale o Dash to Dock pelo Extension Manager "
+                                         "(botão 🧩 Gerenciar extensões…, na aba Extensões) "
+                                         "e clique de novo em 🧭 Clássico.")
+            dlg.set_buttons(["OK"])
+            dlg.choose(self, None, None)
+            return
+        self.mostrar(valores_classico())
+        self.status("🧭 Visual Clássico carregado (barra do GNOME no topo + Dash to Dock). "
+                    "Clique em ✅ Aplicar.")
+
     def ao_clicar_gnome(self, *_):
         dlg = Gtk.AlertDialog(message="Carregar o padrão do GNOME?",
                               detail="Barra no topo (Dash to Panel desligado), tema Adwaita, "
@@ -1212,10 +1247,14 @@ def main():
         return 0
     if "--help" in args or "-h" in args:
         print("Uso: voidbr-gnome-tweaks [--aba barra|aparencia|papel|extensoes|diagnostico]\n"
-              "                           [--padrao-voidbr | --padrao-gnome]")
+              "                           [--padrao-voidbr | --padrao-classico | --padrao-gnome]")
         return 0
-    if "--padrao-voidbr" in args or "--padrao-gnome" in args:
-        novo = valores_voidbr() if "--padrao-voidbr" in args else valores_gnome()
+    if "--padrao-voidbr" in args or "--padrao-gnome" in args or "--padrao-classico" in args:
+        if "--padrao-classico" in args and not extensao_instalada(UUID_DTD):
+            print("Dash to Dock não está instalado: instale pelo Extension Manager.")
+            return 1
+        novo = (valores_voidbr() if "--padrao-voidbr" in args else
+                valores_classico() if "--padrao-classico" in args else valores_gnome())
         feito = aplicar(novo, valores_atuais())
         print("Aplicado: " + (", ".join(feito) if feito else "nada mudou"))
         return 0
