@@ -1,0 +1,67 @@
+# VoidBR Linux - padroes do GNOME (substitui o antigo etc/skel/.config/dconf/user)
+# Vale para usuarios que ainda nao alteraram a chave (gsettings do usuario sempre vence).
+# Depois de alterar: glib-compile-schemas /usr/share/glib-2.0/schemas
+
+[org.gnome.desktop.interface]
+color-scheme='prefer-dark'
+# padrao verde; o usuario troca em Configuracoes > Aparencia
+accent-color='green'
+gtk-theme='Tokyonight-Dark-Theme'
+icon-theme='Tokyonight-Dark-Icons'
+cursor-theme='Adwaita'
+font-name='Cantarell 11'
+document-font-name='Cantarell 11'
+monospace-font-name='DejaVu Sans Mono 10'
+font-hinting='full'
+clock-show-weekday=true
+clock-format='24h'
+show-battery-percentage=true
+
+[org.gnome.desktop.wm.preferences]
+button-layout='appmenu:minimize,maximize,close'
+
+[org.gnome.desktop.input-sources]
+sources=[('xkb', 'br'), ('xkb', 'us')]
+
+[org.gnome.desktop.background]
+picture-uri='file:///usr/share/backgrounds/voidbr/voidbr-wallpaper.avif'
+picture-uri-dark='file:///usr/share/backgrounds/voidbr/voidbr-wallpaper.avif'
+picture-options='zoom'
+
+[org.gnome.desktop.screensaver]
+picture-uri='file:///usr/share/backgrounds/voidbr/voidbr-wallpaper.avif'
+picture-options='zoom'
+
+[org.gnome.desktop.peripherals.touchpad]
+tap-to-click=true
+
+[org.gnome.mutter]
+center-new-windows=true
+
+[org.gnome.shell]
+enabled-extensions=['user-theme@gnome-shell-extensions.gcampax.github.com', 'status-icons@gnome-shell-extensions.gcampax.github.com', 'extension-list@tu.berry', 'gsconnect@andyholmes.github.io', 'forge@jmmaranan.com', 'dash-to-panel@jderose9.github.com']
+favorite-apps=['org.gnome.Nautilus.desktop', 'firefox.desktop', 'org.gnome.Terminal.desktop', 'org.gnome.Settings.desktop', 'com.mattjakeman.ExtensionManager.desktop']
+
+[org.gnome.shell.extensions.user-theme]
+name='VoidBR-Tokyonight'
+
+# Barra unica embaixo, flutuante, do tamanho do conteudo e centralizada.
+# O fundo do painel fica transparente: quem desenha as "ilhas" e o tema VoidBR-Tokyonight.
+# (so tem efeito quando o Dash to Panel estiver instalado)
+[org.gnome.shell.extensions.dash-to-panel]
+stockgs-keep-top-panel=false
+panel-positions='{"0":"BOTTOM"}'
+panel-sizes='{"0":48}'
+panel-lengths='{"0":-1}'
+panel-anchors='{"0":"MIDDLE"}'
+panel-top-bottom-margins=10
+panel-side-margins=10
+panel-element-positions='{"0":[{"element":"showAppsButton","visible":true,"position":"stackedTL"},{"element":"activitiesButton","visible":false,"position":"stackedTL"},{"element":"leftBox","visible":false,"position":"stackedTL"},{"element":"taskbar","visible":true,"position":"stackedTL"},{"element":"centerBox","visible":false,"position":"stackedBR"},{"element":"rightBox","visible":true,"position":"stackedBR"},{"element":"systemMenu","visible":true,"position":"stackedBR"},{"element":"dateMenu","visible":true,"position":"stackedBR"},{"element":"desktopButton","visible":false,"position":"stackedBR"}]}'
+trans-use-custom-opacity=true
+trans-panel-opacity=0.0
+global-border-radius=4
+appicon-margin=4
+appicon-padding=6
+dot-position='BOTTOM'
+dot-style-focused='DOTS'
+dot-style-unfocused='DOTS'

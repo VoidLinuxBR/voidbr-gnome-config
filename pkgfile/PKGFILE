@@ -53,6 +53,9 @@ post_install() {
     log "Finalizando instalação"
   fi
 
+  # Ativa os padrões do /usr/share/glib-2.0/schemas/90_voidbr-gnome.gschema.override
+  log "Compilando schemas do GSettings"
+  glib-compile-schemas /usr/share/glib-2.0/schemas || true
 }
 
 pre_upgrade() {

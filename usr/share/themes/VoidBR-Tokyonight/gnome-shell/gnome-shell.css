@@ -1,0 +1,62 @@
+/* VoidBR Linux - tema do GNOME Shell (carregado pela extensao User Themes)
+ * Herda o Tokyonight-Dark-Theme (pacote voidbr-tokyo-theme) e so desenha as
+ * "ilhas" da barra do Dash to Panel. As bordas de item aberto usam
+ * -st-accent-color, entao acompanham a cor escolhida em Configuracoes > Aparencia.
+ */
+@import url("/usr/share/themes/Tokyonight-Dark-Theme/gnome-shell/gnome-shell.css");
+
+/* fundo comum de todas as ilhas (azul-noite do Tokyo Night) */
+.dashtopanelMainPanel .show-apps,
+.dashtopanelMainPanel #dashtopanelTaskbar,
+.dashtopanelMainPanel #panelRight,
+.dashtopanelMainPanel .panel-status-indicators-box,
+.dashtopanelMainPanel .clock-display {
+  background-color: rgba(26, 27, 38, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+}
+
+/* ilha 1: botao de apps + lancadores */
+.dashtopanelMainPanel .show-apps {
+  margin-right: 6px;
+}
+
+.dashtopanelMainPanel #dashtopanelTaskbar {
+  padding: 0 6px;
+}
+
+/* ilha 2: icones de extensoes (status-icons, gsconnect...) */
+.dashtopanelMainPanel #panelRight {
+  margin-left: 8px;
+  padding: 0 6px;
+}
+
+/* ilha 3: bandeja (rede, som, bateria) */
+.dashtopanelMainPanel .panel-status-indicators-box {
+  margin-left: 8px;
+  padding: 0 12px;
+}
+
+/* ilha 4: relogio */
+.dashtopanelMainPanel .clock-display {
+  margin-left: 8px;
+  padding: 0 14px;
+}
+
+/* o botao em volta da bandeja/relogio fica transparente, so a ilha aparece */
+.dashtopanelMainPanel .panel-button {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.dashtopanelMainPanel .panel-button:hover .panel-status-indicators-box,
+.dashtopanelMainPanel .clock-display:hover {
+  background-color: rgba(41, 46, 66, 0.92);
+}
+
+/* item aberto: borda na cor de destaque escolhida pelo usuario */
+.dashtopanelMainPanel .panel-button:checked .panel-status-indicators-box,
+.dashtopanelMainPanel .clock-display:checked,
+.dashtopanelMainPanel .show-apps:checked {
+  border-color: -st-accent-color;
+}
