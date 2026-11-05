@@ -4,5 +4,5 @@
   "description": "Ajustes do GNOME Shell do VoidBR Linux: relógio em duas linhas (hora e data) e área de trabalho no login, sem abrir a Visão Geral.",
   "shell-version": ["46", "47", "48", "49", "50"],
   "url": "https://github.com/voidlinuxbr/voidbr-gnome-config",
-  "version": 1
+  "version": 2
 }

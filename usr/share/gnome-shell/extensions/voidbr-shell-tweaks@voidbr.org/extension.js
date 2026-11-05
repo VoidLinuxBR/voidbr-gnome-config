@@ -12,6 +12,10 @@ import Pango from 'gi://Pango';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+// só a primeira ativação da sessão mexe na Visão Geral (depois de
+// desbloquear a tela, por exemplo, o enable() roda de novo)
+let firstEnable = true;
+
 export default class VoidBRShellTweaks extends Extension {
     enable() {
         this._enableNoOverview();
@@ -24,24 +28,40 @@ export default class VoidBRShellTweaks extends Extension {
     }
 
     // --- sem Visão Geral no login ---------------------------------------
-    // Durante a inicialização o Shell abre a Visão Geral se a sessão "tem"
-    // Visão Geral; desligamos isso só até o startup terminar.
+    // No GNOME 45+ as extensões carregam de forma assíncrona, então o enable()
+    // pode chegar antes ou depois de o Shell decidir abrir a Visão Geral:
+    //   - antes: desligamos hasOverview só até o startup terminar;
+    //   - depois: fechamos a Visão Geral na primeira ativação da sessão.
     _enableNoOverview() {
-        if (!Main.layoutManager._startingUp)
+        if (!firstEnable)
             return;
+        firstEnable = false;
 
-        this._realHasOverview = Main.sessionMode.hasOverview;
-        Main.sessionMode.hasOverview = false;
+        if (Main.layoutManager._startingUp) {
+            this._realHasOverview = Main.sessionMode.hasOverview;
+            Main.sessionMode.hasOverview = false;
 
-        this._startupId = Main.layoutManager.connect('startup-complete', () => {
-            Main.sessionMode.hasOverview = this._realHasOverview;
-            this._disconnectStartup();
-        });
+            this._startupId = Main.layoutManager.connect('startup-complete', () => {
+                Main.sessionMode.hasOverview = this._realHasOverview;
+                this._realHasOverview = undefined;
+                this._disconnectStartup();
+                this._hideOverview();
+            });
+        } else {
+            this._hideOverview();
+        }
+    }
+
+    _hideOverview() {
+        if (Main.overview.visible)
+            Main.overview.hide();
     }
 
     _disableNoOverview() {
-        if (this._realHasOverview !== undefined)
+        if (this._realHasOverview !== undefined) {
             Main.sessionMode.hasOverview = this._realHasOverview;
+            this._realHasOverview = undefined;
+        }
         this._disconnectStartup();
     }
 
