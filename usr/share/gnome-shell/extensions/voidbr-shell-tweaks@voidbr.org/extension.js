@@ -9,6 +9,7 @@
 import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
 
+import * as AppFavorites from 'resource:///org/gnome/shell/ui/appFavorites.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -20,9 +21,11 @@ export default class VoidBRShellTweaks extends Extension {
     enable() {
         this._enableNoOverview();
         this._enableTwoLineClock();
+        this._enableFavoritesRelayout();
     }
 
     disable() {
+        this._disableFavoritesRelayout();
         this._disableTwoLineClock();
         this._disableNoOverview();
     }
@@ -70,6 +73,35 @@ export default class VoidBRShellTweaks extends Extension {
             Main.layoutManager.disconnect(this._startupId);
             this._startupId = 0;
         }
+    }
+
+    // --- barra atualiza na hora ao fixar/desafixar app ------------------
+    // Com o Dash to Panel em comprimento dinâmico, o ícone novo só aparecia
+    // na próxima reorganização do painel; forçamos essa reorganização.
+    _enableFavoritesRelayout() {
+        this._favorites = AppFavorites.getAppFavorites();
+        this._favoritesId = this._favorites.connect('changed', () => {
+            if (this._relayoutId)
+                return;
+            this._relayoutId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
+                this._relayoutId = 0;
+                for (let a = Main.panel; a && a !== Main.layoutManager.uiGroup; a = a.get_parent())
+                    a.queue_relayout();
+                return GLib.SOURCE_REMOVE;
+            });
+        });
+    }
+
+    _disableFavoritesRelayout() {
+        if (this._relayoutId) {
+            GLib.source_remove(this._relayoutId);
+            this._relayoutId = 0;
+        }
+        if (this._favoritesId) {
+            this._favorites.disconnect(this._favoritesId);
+            this._favoritesId = 0;
+        }
+        this._favorites = null;
     }
 
     // --- relógio em duas linhas -----------------------------------------
