@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=VoidBR GNOME Tweaks
+GenericName=Ajustes do GNOME
+Comment=Barra em ilhas, aparência, papel de parede, extensões e tempo do login
+Comment[pt_BR]=Barra em ilhas, aparência, papel de parede, extensões e tempo do login
+Exec=voidbr-gnome-tweaks
+Icon=preferences-desktop-theme
+Terminal=false
+Categories=Settings;DesktopSettings;GTK;GNOME;X-VoidBR-Apps;
+Keywords=gnome;tweaks;barra;dash;panel;ilhas;tema;extensões;extensoes;papel de parede;wallpaper;login;
+StartupNotify=true
+StartupWMClass=org.voidbr.GnomeTweaks

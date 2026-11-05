@@ -1,0 +1,1230 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+#   voidbr-gnome-tweaks
+#   Created: qui 05 nov 2026 00:40:00 -04
+#   Altered: qui 05 nov 2026 00:40:00 -04
+#
+#   Copyright (c) 2026, Vilmar Catafesta <vcatafesta@gmail.com>
+#   Copyright (c) 2026, VoidLinuxBR Team
+#   Assembled By Vilmar Catafesta for the VoidBR project.
+#   All rights reserved.
+#
+#   ChangeLog:
+#   - v1.0 (2026-11-05): Versão inicial — GTK4 + PyGObject, no modelo do
+#     voidbr-xfce-tweaks. Abas Barra (Dash to Panel e voidbr-shell-tweaks),
+#     Aparência, Papel de parede (voidbr-change-gnome-wallpaper), Extensões e
+#     Diagnóstico (voidbr-gnome-diag). Botões Aplicar, Padrão VoidBR e
+#     Padrão GNOME.
+#
+#   Redistribution and use in source and binary forms, with or without
+#   modification, are permitted provided that the following conditions
+#   are met:
+#   1. Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#   2. Redistributions in binary form must reproduce the above copyright
+#      notice, this list of conditions and the following disclaimer in the
+#      documentation and/or other materials provided with the distribution.
+#
+#   THIS SOFTWARE IS PROVIDED BY Vilmar Catafesta ''AS IS'' AND ANY EXPRESS OR
+#   IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+#   OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+#   IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+#   INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+#   NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+#   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+#   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+#   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+#   THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+##############################################################################
+"""
+VoidBR GNOME Tweaks - ajustes do GNOME do VoidBR (barra em ilhas, aparência,
+papel de parede, extensões e tempo do login) sem digitar gsettings.
+
+Requer: PyGObject (GTK4).
+    sudo xbps-install -S python3-gobject gtk4
+
+O que o app altera (sempre no usuário atual, pelo GSettings/dconf):
+    org.gnome.desktop.interface           tema, ícones, cursor, cores, fontes
+    org.gnome.desktop.wm.preferences      botões da janela
+    org.gnome.shell                       extensões ligadas
+    org.gnome.shell.extensions.*          Dash to Panel, User Themes,
+                                          voidbr-shell-tweaks, GSConnect, Forge
+    ~/.config/voidbr/gnome-tweaks.json    fonte do próprio app
+Fora do usuário (pede senha pelo polkit):
+    /etc/voidbr-change-gnome-wallpaper.conf   slideshow do papel de parede
+"""
+
+import gi
+import glob
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import threading
+import xml.etree.ElementTree as ET
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Pango", "1.0")
+from gi.repository import Gtk, GLib, Gio, Pango
+
+VERSAO = "1.0"
+APP_ID = "org.voidbr.GnomeTweaks"
+
+CONFIG = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+DATA = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+PREFS_APP = os.path.join(CONFIG, "voidbr", "gnome-tweaks.json")
+ESCALA_MIN, ESCALA_MAX = 0.7, 2.0
+
+SCHEMAS_DIR = "/usr/share/glib-2.0/schemas"
+OVERRIDE_VOIDBR = os.path.join(SCHEMAS_DIR, "90_voidbr-gnome.gschema.override")
+DCONF_VOIDBR = "/etc/dconf/db/local.d/10-voidbr-gnome"
+LOG_SESSAO = os.path.join(DATA, "sddm", "wayland-session.log")
+
+PAPEL_CONF = "/etc/voidbr-change-gnome-wallpaper.conf"
+PAPEL_SALVAR = "/usr/local/bin/voidbr-change-gnome-wallpaper-save-conf"
+PAPEL_PASTA_VOIDBR = "/usr/share/backgrounds/voidbr"
+PAPEL_INICIO_VOIDBR = "/usr/share/backgrounds/voidbr/voidbr-wallpaper.avif"
+
+# schemas
+S_IFACE = "org.gnome.desktop.interface"
+S_WM = "org.gnome.desktop.wm.preferences"
+S_SHELL = "org.gnome.shell"
+S_DTP = "org.gnome.shell.extensions.dash-to-panel"
+S_THEME = "org.gnome.shell.extensions.user-theme"
+S_TWEAKS = "org.gnome.shell.extensions.voidbr-shell-tweaks"
+S_GSCONNECT = "org.gnome.Shell.Extensions.GSConnect"
+S_FORGE = "org.gnome.shell.extensions.forge"
+
+UUID_DTP = "dash-to-panel@jderose9.github.com"
+UUID_THEME = "user-theme@gnome-shell-extensions.gcampax.github.com"
+UUID_TWEAKS = "voidbr-shell-tweaks@voidbr.org"
+UUID_GSCONNECT = "gsconnect@andyholmes.github.io"
+UUID_FORGE = "forge@jmmaranan.com"
+
+TEMA_SHELL_ILHAS = "VoidBR-Tokyonight"
+TEMA_SHELL_SEM_ILHAS = "Tokyonight-Dark-Theme"
+
+# extensões mostradas na aba Extensões (uuid, nome, descrição)
+EXTENSOES = [
+    (UUID_DTP, "Dash to Panel", "barra única com apps, bandeja e relógio"),
+    (UUID_THEME, "User Themes", "carrega o tema do Shell (ilhas)"),
+    (UUID_TWEAKS, "VoidBR Shell Tweaks", "relógio em 2 linhas e login sem Visão Geral"),
+    ("status-icons@gnome-shell-extensions.gcampax.github.com", "Status Icons",
+     "ícones de bandeja dos apps"),
+    ("extension-list@tu.berry", "Extension List", "lista de extensões no painel"),
+    (UUID_GSCONNECT, "GSConnect", "integração com o celular (KDE Connect)"),
+    (UUID_FORGE, "Forge", "mosaico de janelas"),
+]
+
+POSICOES = [("BOTTOM", "⬇️ Embaixo"), ("TOP", "⬆️ Em cima"),
+            ("LEFT", "⬅️ Esquerda"), ("RIGHT", "➡️ Direita")]
+COMPRIMENTOS = [(-1, "Dinâmico (do tamanho do conteúdo)"), (100, "Tela inteira")]
+ESTILOS = [("prefer-dark", "🌙 Escuro"), ("default", "☀️ Claro")]
+CORES = [("blue", "🔵 Azul"), ("teal", "🩵 Turquesa"), ("green", "🟢 Verde"),
+         ("yellow", "🟡 Amarelo"), ("orange", "🟠 Laranja"), ("red", "🔴 Vermelho"),
+         ("pink", "🩷 Rosa"), ("purple", "🟣 Roxo"), ("slate", "⚪ Ardósia")]
+BOTOES_JANELA = [("appmenu:minimize,maximize,close", "Direita: – □ ✕"),
+                 ("appmenu:close", "Direita: só ✕ (padrão GNOME)"),
+                 ("close,minimize,maximize:appmenu", "Esquerda: ✕ – □ (estilo Mac)")]
+
+CSS = """
+window { background-color: #1e1f29; }
+label { color: #f1f1f1; }
+.titulo-app { font-size: 20px; font-weight: 800; color: #7dd3fc; }
+.subtitulo { color: #a9b1d6; font-size: 12px; }
+.rotulo-campo { font-weight: bold; }
+.dica { color: #8a8fa8; font-size: 11px; }
+.secao { color: #7aa2f7; font-weight: bold; margin-top: 6px; }
+.aviso { color: #e0af68; }
+.botao-verde { background: linear-gradient(180deg, #34d399, #059669); color: white;
+    font-weight: bold; border-radius: 10px; padding: 10px 14px; }
+.botao-verde:hover { background: #34d399; }
+.botao-laranja { background: linear-gradient(180deg, #fbbf24, #d97706); color: white;
+    font-weight: bold; border-radius: 10px; padding: 10px 14px; }
+.botao-laranja:hover { background: #fbbf24; }
+.botao-azul { background: linear-gradient(180deg, #60a5fa, #2563eb); color: white;
+    font-weight: bold; border-radius: 10px; padding: 10px 14px; }
+.botao-azul:hover { background: #60a5fa; }
+.caixa-status { background-color: #2a2b3a; border-radius: 10px; padding: 8px; }
+.cabecalho-app { background-color: #1a1b26; color: #f1f1f1; }
+.botao-fonte { font-weight: bold; padding: 2px 10px; min-height: 24px; background: #3b3d52;
+    color: #f1f1f1; border: 1px solid #4b4e66; }
+.botao-fonte label { color: #f1f1f1; }
+.botao-fonte:hover { background: #4b4e66; }
+.botao-fonte:disabled { background: #2a2b3a; }
+notebook > header, notebook > stack, scrolledwindow, viewport { background-color: #24283b; }
+notebook > header tab label { color: #a9b1d6; }
+notebook > header tab:checked label { color: #ffffff; }
+button { background: #3b3d52; color: #f1f1f1; border: 1px solid #4b4e66; }
+button label { color: #f1f1f1; }
+dropdown button, button.font { background: #3b3d52; color: #f1f1f1; border: 1px solid #4b4e66; }
+dropdown button label, button.font label { color: #f1f1f1; }
+popover contents, popover arrow { background-color: #2a2b3a; }
+textview.saida, textview.saida text { background-color: #16161e; color: #c0caf5;
+    font-family: monospace; }
+"""
+
+
+# ---------------------------------------------------------------------------
+#   preferências do próprio app
+# ---------------------------------------------------------------------------
+
+def ler_prefs_app():
+    try:
+        with open(PREFS_APP, encoding="utf-8") as f:
+            dados = json.load(f)
+        return dados if isinstance(dados, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def gravar_prefs_app(**valores):
+    dados = ler_prefs_app()
+    dados.update(valores)
+    os.makedirs(os.path.dirname(PREFS_APP), exist_ok=True)
+    with open(PREFS_APP, "w", encoding="utf-8") as f:
+        json.dump(dados, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
+# ---------------------------------------------------------------------------
+#   GSettings
+# ---------------------------------------------------------------------------
+
+def _fonte_schemas_extensao(uuid):
+    """Fonte de schemas de uma extensão que guarda o schema na própria pasta
+    (GSConnect e Forge ficam no skel, fora de /usr/share/glib-2.0/schemas)."""
+    padrao = Gio.SettingsSchemaSource.get_default()
+    for base in (os.path.join(DATA, "gnome-shell", "extensions"),
+                 "/usr/share/gnome-shell/extensions"):
+        pasta = os.path.join(base, uuid, "schemas")
+        if os.path.isfile(os.path.join(pasta, "gschemas.compiled")):
+            try:
+                return Gio.SettingsSchemaSource.new_from_directory(pasta, padrao, False)
+            except GLib.Error:
+                pass
+    return None
+
+
+_cache_settings = {}
+
+
+def settings(schema_id, uuid=None):
+    """Gio.Settings do schema, ou None se ele não estiver instalado."""
+    if schema_id in _cache_settings:
+        return _cache_settings[schema_id]
+    obj = None
+    fonte = Gio.SettingsSchemaSource.get_default()
+    schema = fonte.lookup(schema_id, True) if fonte else None
+    if schema is None and uuid:
+        fonte_ext = _fonte_schemas_extensao(uuid)
+        schema = fonte_ext.lookup(schema_id, False) if fonte_ext else None
+    if schema is not None:
+        obj = Gio.Settings.new_full(schema, None, None)
+    _cache_settings[schema_id] = obj
+    return obj
+
+
+def tem_chave(gs, chave):
+    return gs is not None and gs.props.settings_schema.has_key(chave)
+
+
+def ler(schema_id, chave, uuid=None):
+    """Valor Python da chave, ou None se o schema/chave não existir."""
+    gs = settings(schema_id, uuid)
+    if not tem_chave(gs, chave):
+        return None
+    return gs.get_value(chave).unpack()
+
+
+def gravar(schema_id, chave, valor, uuid=None):
+    """Grava a chave com o tipo do schema. Valor None = reset (padrão do sistema)."""
+    gs = settings(schema_id, uuid)
+    if not tem_chave(gs, chave):
+        return False
+    if valor is None:
+        gs.reset(chave)
+        return True
+    tipo = gs.props.settings_schema.get_key(chave).get_value_type()
+    gs.set_value(chave, GLib.Variant(tipo.dup_string(), valor))
+    return True
+
+
+def dtp_ler_monitor(chave, padrao):
+    """Chaves JSON por monitor do Dash to Panel ({"0": ...} ou {"<id>": ...})."""
+    try:
+        dados = json.loads(ler(S_DTP, chave) or "{}")
+    except ValueError:
+        dados = {}
+    for k in ("0", *dados.keys()):
+        if k in dados:
+            return dados[k]
+    return padrao
+
+
+def dtp_gravar_monitor(chave, valor):
+    """Grava em todos os monitores já conhecidos pelo Dash to Panel e no "0"."""
+    try:
+        dados = json.loads(ler(S_DTP, chave) or "{}")
+    except ValueError:
+        dados = {}
+    for k in list(dados.keys()) + ["0"]:
+        dados[k] = valor
+    gravar(S_DTP, chave, json.dumps(dados, separators=(",", ":")))
+
+
+def padrao_upstream(schema_id, chave):
+    """Padrão ORIGINAL da chave, lido do .gschema.xml (sem o override do VoidBR)."""
+    for arq in glob.glob(os.path.join(SCHEMAS_DIR, "*.gschema.xml")):
+        try:
+            raiz = ET.parse(arq).getroot()
+        except (ET.ParseError, OSError):
+            continue
+        for sch in raiz.iter("schema"):
+            if sch.get("id") != schema_id:
+                continue
+            for k in sch.iter("key"):
+                if k.get("name") == chave:
+                    d = k.find("default")
+                    tipo = k.get("type") or "s"
+                    if d is None or d.text is None:
+                        return None
+                    if k.get("enum") or k.get("flags"):
+                        tipo = "s"
+                    try:
+                        return GLib.Variant.parse(GLib.VariantType.new(tipo), d.text.strip(),
+                                                  None, None).unpack()
+                    except GLib.Error:
+                        return None
+    return None
+
+
+def override_voidbr():
+    """{(schema, chave): texto} do 90_voidbr-gnome.gschema.override."""
+    valores, secao = {}, None
+    try:
+        with open(OVERRIDE_VOIDBR, encoding="utf-8") as f:
+            for linha in f:
+                linha = linha.strip()
+                if not linha or linha.startswith("#"):
+                    continue
+                m = re.match(r"^\[(.+)\]$", linha)
+                if m:
+                    secao = m.group(1)
+                elif "=" in linha and secao:
+                    k, v = linha.split("=", 1)
+                    valores[(secao, k.strip())] = v.strip()
+    except OSError:
+        pass
+    return valores
+
+
+def valor_override(schema_id, chave, padrao):
+    texto = override_voidbr().get((schema_id, chave))
+    gs = settings(schema_id)
+    if texto is None or not tem_chave(gs, chave):
+        return padrao
+    tipo = gs.props.settings_schema.get_key(chave).get_value_type()
+    try:
+        return GLib.Variant.parse(tipo, texto, None, None).unpack()
+    except GLib.Error:
+        return padrao
+
+
+# ---------------------------------------------------------------------------
+#   temas instalados
+# ---------------------------------------------------------------------------
+
+def _pastas(*bases):
+    nomes = set()
+    for base in bases:
+        try:
+            nomes.update(os.listdir(base))
+        except OSError:
+            pass
+    return nomes
+
+
+def temas_gtk():
+    bases = ("/usr/share/themes", os.path.expanduser("~/.themes"), os.path.join(DATA, "themes"))
+    ok = [n for n in _pastas(*bases)
+          if any(os.path.isdir(os.path.join(b, n, "gtk-3.0")) for b in bases)]
+    return sorted(set(ok) | {"Adwaita"}, key=str.lower)
+
+
+def _icones_bases():
+    return ("/usr/share/icons", os.path.expanduser("~/.icons"), os.path.join(DATA, "icons"))
+
+
+def temas_icones():
+    bases = _icones_bases()
+    ok = []
+    for n in _pastas(*bases):
+        for b in bases:
+            p = os.path.join(b, n)
+            if os.path.isfile(os.path.join(p, "index.theme")) and \
+                    not os.path.isdir(os.path.join(p, "cursors")) and n not in ("hicolor", "default"):
+                ok.append(n)
+                break
+    return sorted(set(ok), key=str.lower)
+
+
+def temas_cursor():
+    bases = _icones_bases()
+    ok = [n for n in _pastas(*bases)
+          if any(os.path.isdir(os.path.join(b, n, "cursors")) for b in bases) and n != "default"]
+    return sorted(set(ok), key=str.lower)
+
+
+# ---------------------------------------------------------------------------
+#   papel de parede (/etc/voidbr-change-gnome-wallpaper.conf)
+# ---------------------------------------------------------------------------
+
+def papel_ler():
+    conf = {"WALLPAPER_DIR": PAPEL_PASTA_VOIDBR, "INTERVAL": "60", "DISABLED": "no",
+            "FIXED_WALLPAPER": "", "START_WALLPAPER": PAPEL_INICIO_VOIDBR}
+    try:
+        with open(PAPEL_CONF, encoding="utf-8") as f:
+            for linha in f:
+                m = re.match(r"^\s*(WALLPAPER_DIR|INTERVAL|DISABLED|FIXED_WALLPAPER|START_WALLPAPER)=(.*)$",
+                             linha.rstrip("\n"))
+                if m:
+                    v = m.group(2).strip()
+                    try:
+                        v = shlex.split(v)[0] if v else ""
+                    except ValueError:
+                        pass
+                    conf[m.group(1)] = v
+    except OSError:
+        pass
+    return conf
+
+
+def papel_texto(conf):
+    q = lambda v: "'" + v.replace("'", "'\\''") + "'" if v else ""
+    return ("# Pasta com os wallpapers do slideshow\n"
+            f"# vazio = {PAPEL_PASTA_VOIDBR}\n"
+            f"WALLPAPER_DIR={q(conf['WALLPAPER_DIR'])}\n\n"
+            "# Intervalo em segundos\n"
+            f"INTERVAL={int(conf['INTERVAL'])}\n\n"
+            "# Controle do slideshow\n"
+            "# yes | no | true | false | 0 | 1\n"
+            f"DISABLED={conf['DISABLED']}\n\n"
+            "# Wallpaper fixo (caminho completo da imagem)\n"
+            "# vazio = slideshow com os wallpapers da pasta\n"
+            f"FIXED_WALLPAPER={q(conf['FIXED_WALLPAPER'])}\n\n"
+            "# Wallpaper do início da sessão (o slideshow continua a partir dele)\n"
+            "# vazio = começa direto pelo slideshow\n"
+            f"START_WALLPAPER={q(conf.get('START_WALLPAPER', ''))}\n")
+
+
+def papel_gravar(conf):
+    """Grava pelo save-conf via pkexec. Retorna (ok, mensagem)."""
+    if not os.access(PAPEL_SALVAR, os.X_OK):
+        return False, "voidbr-change-gnome-wallpaper não está instalado."
+    try:
+        p = subprocess.run(["pkexec", PAPEL_SALVAR], input=papel_texto(conf),
+                           text=True, capture_output=True, timeout=300,
+                           env=dict(os.environ, LC_ALL="C"))
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, f"falha ao chamar o pkexec: {e}"
+    if p.returncode == 0:
+        return True, "papel de parede gravado"
+    if p.returncode in (126, 127):
+        return False, "senha cancelada: papel de parede não foi gravado"
+    return False, (p.stderr or "erro ao gravar o papel de parede").strip()
+
+
+# ---------------------------------------------------------------------------
+#   valores: atual, Padrão VoidBR e Padrão GNOME
+# ---------------------------------------------------------------------------
+
+def valores_atuais():
+    ext = ler(S_SHELL, "enabled-extensions") or []
+    tema_shell = ler(S_THEME, "name") or ""
+    return {
+        "ilhas": tema_shell == TEMA_SHELL_ILHAS,
+        "posicao": dtp_ler_monitor("panel-positions", "BOTTOM"),
+        "tamanho": int(dtp_ler_monitor("panel-sizes", 48)),
+        "comprimento": int(dtp_ler_monitor("panel-lengths", -1)),
+        "intellihide": bool(ler(S_DTP, "intellihide")),
+        "relogio2": bool(ler(S_TWEAKS, "two-line-clock")),
+        "sem_visao": bool(ler(S_TWEAKS, "no-overview")),
+        "gtk_tema": ler(S_IFACE, "gtk-theme") or "Adwaita",
+        "icones": ler(S_IFACE, "icon-theme") or "Adwaita",
+        "cursor": ler(S_IFACE, "cursor-theme") or "Adwaita",
+        "estilo": ler(S_IFACE, "color-scheme") or "default",
+        "cor": ler(S_IFACE, "accent-color") or "blue",
+        "fonte": fonte_normalizada(ler(S_IFACE, "font-name") or ""),
+        "fonte_mono": fonte_normalizada(ler(S_IFACE, "monospace-font-name") or ""),
+        "botoes": ler(S_WM, "button-layout") or "appmenu:close",
+        "extensoes": {u: (u in ext) for u, _n, _d in EXTENSOES},
+        "gsconnect_servico": bool(ler(S_GSCONNECT, "enabled", UUID_GSCONNECT)),
+        "forge_mosaico": bool(ler(S_FORGE, "tiling-mode-enabled", UUID_FORGE)),
+    }
+
+
+def valores_voidbr():
+    """Padrão VoidBR: lido do override do voidbr-gnome-config (com reserva fixa)."""
+    ext = valor_override(S_SHELL, "enabled-extensions",
+                         [UUID_THEME, UUID_DTP, UUID_TWEAKS, UUID_GSCONNECT, UUID_FORGE])
+    def dtp(chave, padrao):
+        try:
+            return json.loads(valor_override(S_DTP, chave, "{}")).get("0", padrao)
+        except (ValueError, AttributeError):
+            return padrao
+    return {
+        "ilhas": valor_override(S_THEME, "name", TEMA_SHELL_ILHAS) == TEMA_SHELL_ILHAS,
+        "posicao": dtp("panel-positions", "BOTTOM"),
+        "tamanho": int(dtp("panel-sizes", 48)),
+        "comprimento": int(dtp("panel-lengths", -1)),
+        "intellihide": False,
+        "relogio2": True,
+        "sem_visao": True,
+        "gtk_tema": valor_override(S_IFACE, "gtk-theme", "Tokyonight-Dark-Theme"),
+        "icones": valor_override(S_IFACE, "icon-theme", "Tokyonight-Dark-Icons"),
+        "cursor": valor_override(S_IFACE, "cursor-theme", "Adwaita"),
+        "estilo": valor_override(S_IFACE, "color-scheme", "prefer-dark"),
+        "cor": valor_override(S_IFACE, "accent-color", "green"),
+        "fonte": fonte_normalizada(valor_override(S_IFACE, "font-name", "Cantarell 11")),
+        "fonte_mono": fonte_normalizada(valor_override(S_IFACE, "monospace-font-name",
+                                                       "DejaVu Sans Mono 10")),
+        "botoes": valor_override(S_WM, "button-layout", "appmenu:minimize,maximize,close"),
+        "extensoes": {u: (u in ext) for u, _n, _d in EXTENSOES},
+        "gsconnect_servico": False,
+        "forge_mosaico": False,
+    }
+
+
+def valores_gnome():
+    """Padrão GNOME: os padrões originais dos .gschema.xml, sem o override do VoidBR."""
+    up = lambda s, k, d: (v if (v := padrao_upstream(s, k)) is not None else d)
+    return {
+        "ilhas": False,
+        "posicao": "TOP",
+        "tamanho": 48,
+        "comprimento": 100,
+        "intellihide": False,
+        "relogio2": False,
+        "sem_visao": False,
+        "gtk_tema": up(S_IFACE, "gtk-theme", "Adwaita"),
+        "icones": up(S_IFACE, "icon-theme", "Adwaita"),
+        "cursor": up(S_IFACE, "cursor-theme", "Adwaita"),
+        "estilo": up(S_IFACE, "color-scheme", "default"),
+        "cor": up(S_IFACE, "accent-color", "blue"),
+        "fonte": fonte_normalizada(up(S_IFACE, "font-name", "Cantarell 11")),
+        "fonte_mono": fonte_normalizada(up(S_IFACE, "monospace-font-name", "Monospace 11")),
+        "botoes": up(S_WM, "button-layout", "appmenu:close"),
+        # GNOME puro: nenhuma extensão ligada (o Dash to Panel some e a barra volta ao topo).
+        # Serviço do GSConnect e mosaico do Forge ficam como estão.
+        "extensoes": {u: False for u, _n, _d in EXTENSOES},
+        "gsconnect_servico": None,
+        "forge_mosaico": None,
+    }
+
+
+def aplicar(v, antes):
+    """Grava só o que mudou em relação a `antes`. Retorna lista do que mudou."""
+    feito = []
+
+    def mudou(k):
+        return v.get(k) is not None and v.get(k) != antes.get(k)
+
+    # --- extensões (primeiro: o Dash to Panel some/aparece) ---
+    if mudou("extensoes"):
+        atual = list(ler(S_SHELL, "enabled-extensions") or [])
+        for uuid, ligada in v["extensoes"].items():
+            if ligada and uuid not in atual:
+                atual.append(uuid)
+            elif not ligada and uuid in atual:
+                atual.remove(uuid)
+        gravar(S_SHELL, "disable-user-extensions", False)
+        gravar(S_SHELL, "enabled-extensions", atual)
+        feito.append("extensões")
+
+    # --- barra ---
+    if mudou("ilhas"):
+        # sem ilhas: Tokyonight puro; com o User Themes desligado (Padrão GNOME): Adwaita
+        sem_ilhas = TEMA_SHELL_SEM_ILHAS if v["extensoes"].get(UUID_THEME) else ""
+        gravar(S_THEME, "name", TEMA_SHELL_ILHAS if v["ilhas"] else sem_ilhas)
+        gravar(S_DTP, "trans-use-custom-opacity", v["ilhas"])
+        gravar(S_DTP, "trans-panel-opacity", 0.0 if v["ilhas"] else 0.8)
+        feito.append("ilhas")
+    if mudou("posicao"):
+        dtp_gravar_monitor("panel-positions", v["posicao"])
+        feito.append("posição da barra")
+    if mudou("tamanho"):
+        dtp_gravar_monitor("panel-sizes", int(v["tamanho"]))
+        feito.append("tamanho da barra")
+    if mudou("comprimento"):
+        dtp_gravar_monitor("panel-lengths", int(v["comprimento"]))
+        dtp_gravar_monitor("panel-anchors", "MIDDLE")
+        feito.append("comprimento da barra")
+    if mudou("intellihide"):
+        gravar(S_DTP, "intellihide", v["intellihide"])
+        feito.append("esconder a barra")
+    if mudou("relogio2"):
+        gravar(S_TWEAKS, "two-line-clock", v["relogio2"])
+        feito.append("relógio")
+    if mudou("sem_visao"):
+        gravar(S_TWEAKS, "no-overview", v["sem_visao"])
+        feito.append("Visão Geral no login")
+
+    # --- aparência ---
+    for k, schema, chave, nome in (("gtk_tema", S_IFACE, "gtk-theme", "tema"),
+                                   ("icones", S_IFACE, "icon-theme", "ícones"),
+                                   ("cursor", S_IFACE, "cursor-theme", "cursor"),
+                                   ("estilo", S_IFACE, "color-scheme", "estilo"),
+                                   ("cor", S_IFACE, "accent-color", "cor de destaque"),
+                                   ("fonte", S_IFACE, "font-name", "fonte"),
+                                   ("fonte_mono", S_IFACE, "monospace-font-name", "fonte mono"),
+                                   ("botoes", S_WM, "button-layout", "botões da janela")):
+        if mudou(k) and v[k]:
+            gravar(schema, chave, v[k])
+            feito.append(nome)
+
+    # --- GSConnect e Forge ---
+    if mudou("gsconnect_servico"):
+        gravar(S_GSCONNECT, "enabled", v["gsconnect_servico"], UUID_GSCONNECT)
+        feito.append("serviço do GSConnect")
+    if mudou("forge_mosaico"):
+        gravar(S_FORGE, "tiling-mode-enabled", v["forge_mosaico"], UUID_FORGE)
+        feito.append("mosaico do Forge")
+
+    Gio.Settings.sync()
+    return feito
+
+
+# ---------------------------------------------------------------------------
+#   janela
+# ---------------------------------------------------------------------------
+
+def _escolha(dd, opcoes, valor):
+    """Seleciona no DropDown o item cujo valor é `valor`; se ele não estiver na
+    lista (tema que não achamos, por exemplo), acrescenta, para não trocar sem querer."""
+    for i, (val, _rot) in enumerate(dd._opcoes):
+        if val == valor:
+            dd.set_selected(i)
+            return
+    if valor in (None, ""):
+        return
+    dd._opcoes.append((valor, str(valor)))
+    dd.get_model().append(str(valor))
+    dd.set_selected(len(dd._opcoes) - 1)
+
+
+def fonte_normalizada(texto):
+    """Mesmo texto que o seletor de fonte devolve (evita "mudança" falsa)."""
+    return Pango.FontDescription.from_string(texto).to_string() if texto else ""
+
+
+def extensao_instalada(uuid):
+    return any(os.path.isfile(os.path.join(b, uuid, "metadata.json"))
+               for b in (os.path.join(DATA, "gnome-shell", "extensions"),
+                         "/usr/share/gnome-shell/extensions"))
+
+
+class JanelaTweaks(Gtk.ApplicationWindow):
+    def __init__(self, app, aba_inicial=None):
+        super().__init__(application=app, title="VoidBR GNOME Tweaks")
+        self.set_default_size(720, 640)
+
+        prov = Gtk.CssProvider()
+        prov.load_from_data(CSS.encode("utf-8"))
+        Gtk.StyleContext.add_provider_for_display(self.get_display(), prov,
+                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.css_fonte = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(self.get_display(), self.css_fonte,
+                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1)
+        try:
+            self.escala = min(ESCALA_MAX, max(ESCALA_MIN,
+                                              float(ler_prefs_app().get("font_scale", 1.0))))
+        except (TypeError, ValueError):
+            self.escala = 1.0
+
+        # --- cabeçalho: fonte à esquerda, menu à direita ---
+        cab = Gtk.HeaderBar()
+        cab.add_css_class("cabecalho-app")
+        self.set_titlebar(cab)
+        fonte = Gtk.Box()
+        fonte.add_css_class("linked")
+        self.b_menor = Gtk.Button(label="A−", tooltip_text="Diminuir a fonte (Ctrl -)")
+        self.b_escala = Gtk.Button(label="100%", tooltip_text="Tamanho normal (Ctrl 0)")
+        self.b_maior = Gtk.Button(label="A+", tooltip_text="Aumentar a fonte (Ctrl +)")
+        for b, passo in ((self.b_menor, -1), (self.b_escala, 0), (self.b_maior, 1)):
+            b.add_css_class("botao-fonte")
+            b.connect("clicked", lambda _b, p=passo: self.mudar_fonte(p))
+            fonte.append(b)
+        cab.pack_start(fonte)
+
+        menu = Gio.Menu()
+        menu.append("ℹ️ Sobre / Créditos", "win.sobre")
+        bmenu = Gtk.MenuButton(icon_name="open-menu-symbolic")
+        bmenu.set_menu_model(menu)
+        cab.pack_end(bmenu)
+        for nome, cb in (("sobre", self.ao_clicar_sobre),
+                         ("fonte_mais", lambda *_: self.mudar_fonte(1)),
+                         ("fonte_menos", lambda *_: self.mudar_fonte(-1)),
+                         ("fonte_normal", lambda *_: self.mudar_fonte(0))):
+            acao = Gio.SimpleAction.new(nome, None)
+            acao.connect("activate", cb)
+            self.add_action(acao)
+        app.set_accels_for_action("win.fonte_mais", ["<Control>plus", "<Control>equal",
+                                                     "<Control>KP_Add"])
+        app.set_accels_for_action("win.fonte_menos", ["<Control>minus", "<Control>KP_Subtract"])
+        app.set_accels_for_action("win.fonte_normal", ["<Control>0", "<Control>KP_0"])
+        self.aplicar_fonte()
+
+        caixa = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for lado in ("top", "bottom", "start", "end"):
+            getattr(caixa, f"set_margin_{lado}")(16)
+        self.set_child(caixa)
+
+        titulo = Gtk.Label(label="🛠️ VoidBR GNOME Tweaks", xalign=0)
+        titulo.add_css_class("titulo-app")
+        caixa.append(titulo)
+        sub = Gtk.Label(label="Barra em ilhas, aparência, papel de parede, extensões e tempo do login",
+                        xalign=0)
+        sub.add_css_class("subtitulo")
+        caixa.append(sub)
+
+        self.abas = Gtk.Notebook()
+        self.abas.set_vexpand(True)
+        self.indice_aba = {}
+        for chave, rotulo, fabrica in (("barra", "🧱 Barra", self._aba_barra),
+                                       ("aparencia", "🎨 Aparência", self._aba_aparencia),
+                                       ("papel", "🖼️ Papel de parede", self._aba_papel),
+                                       ("extensoes", "🧩 Extensões", self._aba_extensoes),
+                                       ("diagnostico", "⏱️ Diagnóstico", self._aba_diagnostico)):
+            rolagem = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+            rolagem.set_child(fabrica())
+            self.indice_aba[chave] = self.abas.append_page(rolagem, Gtk.Label(label=rotulo))
+        caixa.append(self.abas)
+
+        st = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        st.add_css_class("caixa-status")
+        self.label_status = Gtk.Label(label="", xalign=0, wrap=True)
+        st.append(self.label_status)
+        caixa.append(st)
+
+        linha = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        b_gnome = Gtk.Button(label="🔵 Padrão GNOME")
+        b_gnome.add_css_class("botao-azul")
+        b_gnome.connect("clicked", self.ao_clicar_gnome)
+        b_voidbr = Gtk.Button(label="↩️ Padrão VoidBR")
+        b_voidbr.add_css_class("botao-laranja")
+        b_voidbr.connect("clicked", self.ao_clicar_voidbr)
+        self.b_aplicar = Gtk.Button(label="✅ Aplicar")
+        self.b_aplicar.add_css_class("botao-verde")
+        self.b_aplicar.connect("clicked", self.ao_clicar_aplicar)
+        for b in (b_gnome, b_voidbr, self.b_aplicar):
+            linha.append(b)
+        caixa.append(linha)
+
+        self.recarregar()
+        if aba_inicial in self.indice_aba:
+            self.abas.set_current_page(self.indice_aba[aba_inicial])
+            if aba_inicial == "diagnostico":
+                self.atualizar_diagnostico()
+
+    # ----- blocos de interface -----
+
+    def _grade(self, titulo=None):
+        g = Gtk.Grid(column_spacing=14, row_spacing=10)
+        for lado in ("top", "bottom", "start", "end"):
+            getattr(g, f"set_margin_{lado}")(14)
+        g._linha = 0
+        if titulo:
+            self._secao(g, titulo)
+        return g
+
+    def _secao(self, g, texto):
+        s = Gtk.Label(label=texto, xalign=0)
+        s.add_css_class("secao")
+        g.attach(s, 0, g._linha, 3, 1)
+        g._linha += 1
+
+    def _rotulo(self, g, texto, dica=None):
+        r = Gtk.Label(label=texto, xalign=0, hexpand=True)
+        r.add_css_class("rotulo-campo")
+        g.attach(r, 0, g._linha, 1, 1)
+        if dica:
+            d = Gtk.Label(label=dica, xalign=0, wrap=True)
+            d.add_css_class("dica")
+            g.attach(d, 0, g._linha + 1, 3, 1)
+
+    def _avanca(self, g, dica):
+        g._linha += 2 if dica else 1
+
+    def _chave(self, g, texto, dica=None):
+        self._rotulo(g, texto, dica)
+        sw = Gtk.Switch(halign=Gtk.Align.END, valign=Gtk.Align.CENTER)
+        g.attach(sw, 1, g._linha, 2, 1)
+        self._avanca(g, dica)
+        return sw
+
+    def _lista(self, g, texto, opcoes, dica=None):
+        self._rotulo(g, texto, dica)
+        dd = Gtk.DropDown.new_from_strings([r for _v, r in opcoes])
+        dd._opcoes = list(opcoes)
+        g.attach(dd, 1, g._linha, 2, 1)
+        self._avanca(g, dica)
+        return dd
+
+    def _escala(self, g, texto, minimo, maximo, sufixo="", dica=None):
+        self._rotulo(g, texto, dica)
+        esc = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, minimo, maximo, 1)
+        esc.set_size_request(220, -1)
+        esc.set_draw_value(False)
+        val = Gtk.Label(xalign=1, width_chars=6)
+        esc.connect("value-changed", lambda e: val.set_text(f"{int(e.get_value())}{sufixo}"))
+        g.attach(esc, 1, g._linha, 1, 1)
+        g.attach(val, 2, g._linha, 1, 1)
+        self._avanca(g, dica)
+        return esc
+
+    def _aviso(self, g, texto):
+        a = Gtk.Label(label=texto, xalign=0, wrap=True)
+        a.add_css_class("aviso")
+        g.attach(a, 0, g._linha, 3, 1)
+        g._linha += 1
+
+    @staticmethod
+    def _valor_dd(dd):
+        i = dd.get_selected()
+        return dd._opcoes[i][0] if 0 <= i < len(dd._opcoes) else None
+
+    # ----- abas -----
+
+    def _aba_barra(self):
+        g = self._grade("Barra (Dash to Panel)")
+        if settings(S_DTP) is None:
+            self._aviso(g, "⚠️ Dash to Panel não instalado: instale o pacote "
+                           "voidbr-gnome-shell-extension-dash-to-panel.")
+        self.w_ilhas = self._chave(g, "Barra em ilhas",
+                                   "apps, extensões, bandeja e relógio separados (tema VoidBR-Tokyonight)")
+        self.w_posicao = self._lista(g, "Posição", POSICOES)
+        self.w_tamanho = self._escala(g, "Tamanho da barra", 32, 64, " px")
+        self.w_comprimento = self._lista(g, "Comprimento", COMPRIMENTOS)
+        self.w_intellihide = self._chave(g, "Esconder a barra automaticamente",
+                                         "a barra some quando uma janela encosta nela")
+        self._secao(g, "Shell")
+        if settings(S_TWEAKS) is None:
+            self._aviso(g, "⚠️ Schema do VoidBR Shell Tweaks não encontrado (voidbr-gnome-config).")
+        self.w_relogio2 = self._chave(g, "Relógio em duas linhas", "hora em cima, data embaixo")
+        self.w_sem_visao = self._chave(g, "Abrir na área de trabalho",
+                                       "não mostra a Visão Geral depois do login (vale no próximo login)")
+        return g
+
+    def _aba_aparencia(self):
+        g = self._grade("Tema")
+        self.op_gtk = [(n, n) for n in temas_gtk()]
+        self.op_icones = [(n, n) for n in temas_icones()]
+        self.op_cursor = [(n, n) for n in temas_cursor()]
+        self.w_gtk = self._lista(g, "Tema dos apps (GTK3)", self.op_gtk,
+                                 "os apps GTK4/libadwaita seguem só o estilo e a cor de destaque")
+        self.w_icones = self._lista(g, "Ícones", self.op_icones)
+        self.w_cursor = self._lista(g, "Cursor", self.op_cursor)
+        self._secao(g, "Cores")
+        self.w_estilo = self._lista(g, "Estilo", ESTILOS)
+        self.w_cor = self._lista(g, "Cor de destaque", CORES,
+                                 "a mesma de Configurações › Aparência")
+        self._secao(g, "Fontes e janelas")
+        self.w_fonte = self._botao_fonte(g, "Fonte da interface")
+        self.w_fonte_mono = self._botao_fonte(g, "Fonte monoespaçada")
+        self.w_botoes = self._lista(g, "Botões da janela", BOTOES_JANELA)
+        return g
+
+    def _botao_fonte(self, g, texto):
+        self._rotulo(g, texto)
+        b = Gtk.FontDialogButton(dialog=Gtk.FontDialog(modal=True))
+        b.set_use_font(True)
+        g.attach(b, 1, g._linha, 2, 1)
+        g._linha += 1
+        return b
+
+    def _aba_papel(self):
+        g = self._grade("Slideshow (voidbr-change-gnome-wallpaper)")
+        if not os.access(PAPEL_SALVAR, os.X_OK):
+            self._aviso(g, "⚠️ voidbr-change-gnome-wallpaper não instalado.")
+        self.w_slideshow = self._chave(g, "Trocar o papel de parede sozinho")
+        self._rotulo(g, "Pasta das imagens")
+        caixa = Gtk.Box(spacing=6)
+        self.l_pasta = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.MIDDLE, max_width_chars=30)
+        b = Gtk.Button(label="📂 Escolher…")
+        b.connect("clicked", self.ao_escolher_pasta)
+        caixa.append(self.l_pasta)
+        caixa.append(b)
+        g.attach(caixa, 1, g._linha, 2, 1)
+        g._linha += 1
+        self.w_intervalo = self._escala(g, "Intervalo", 10, 600, " s")
+        self._secao(g, "Papel fixo")
+        self._rotulo(g, "Imagem", "com uma imagem escolhida, o slideshow fica parado nela")
+        caixa2 = Gtk.Box(spacing=6)
+        self.l_fixo = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.MIDDLE, max_width_chars=30)
+        b2 = Gtk.Button(label="🖼️ Escolher…")
+        b2.connect("clicked", self.ao_escolher_fixo)
+        b3 = Gtk.Button(label="✖", tooltip_text="Sem papel fixo")
+        b3.connect("clicked", lambda *_: self._set_fixo(""))
+        for w in (self.l_fixo, b2, b3):
+            caixa2.append(w)
+        g.attach(caixa2, 1, g._linha, 2, 1)
+        g._linha += 2
+        self._aviso(g, "🔒 Esta aba grava em /etc: ao aplicar, o sistema pede a sua senha.")
+        return g
+
+    def _aba_extensoes(self):
+        g = self._grade("Extensões ligadas")
+        self.w_ext = {}
+        for uuid, nome, desc in EXTENSOES:
+            instalada = extensao_instalada(uuid)
+            sw = self._chave(g, nome, desc if instalada else f"{desc} — não instalada")
+            sw.set_sensitive(instalada)
+            self.w_ext[uuid] = sw
+        self._secao(g, "Dentro das extensões")
+        self.w_gsconnect = self._chave(g, "GSConnect: serviço ligado",
+                                       "desligado: o botão aparece nas configurações rápidas, mas não procura celulares")
+        self.w_forge = self._chave(g, "Forge: mosaico ligado",
+                                   "desligado: as janelas ficam soltas, como no GNOME normal")
+        b = Gtk.Button(label="🧩 Gerenciar extensões…", halign=Gtk.Align.START)
+        b.connect("clicked", self.ao_gerenciar_extensoes)
+        g.attach(b, 0, g._linha, 3, 1)
+        g._linha += 1
+        return g
+
+    def _aba_diagnostico(self):
+        g = self._grade("Tempo do login")
+        self.saida = Gtk.TextView(editable=False, monospace=True, wrap_mode=Gtk.WrapMode.WORD_CHAR)
+        self.saida.add_css_class("saida")
+        self.saida.set_size_request(-1, 220)
+        g.attach(self.saida, 0, g._linha, 3, 1)
+        g._linha += 1
+        botoes = Gtk.Box(spacing=8)
+        for rotulo, cb in (("🔄 Atualizar", lambda *_: self.atualizar_diagnostico()),
+                           ("🧪 Medir extensões uma a uma", self.ao_teste_extensoes),
+                           ("📄 Abrir log da sessão", self.ao_abrir_log)):
+            b = Gtk.Button(label=rotulo)
+            b.connect("clicked", cb)
+            botoes.append(b)
+        g.attach(botoes, 0, g._linha, 3, 1)
+        g._linha += 1
+        d = Gtk.Label(label="“Medir extensões uma a uma”: a cada login uma extensão fica ligada "
+                            "sozinha. Saia e entre na sessão e clique de novo até aparecer a tabela; "
+                            "no fim as suas extensões voltam sozinhas.", xalign=0, wrap=True)
+        d.add_css_class("dica")
+        g.attach(d, 0, g._linha, 3, 1)
+        g._linha += 1
+        return g
+
+    # ----- valores <-> widgets -----
+
+    def mostrar(self, v):
+        self.w_ilhas.set_active(v["ilhas"])
+        _escolha(self.w_posicao, POSICOES, v["posicao"])
+        self.w_tamanho.set_value(v["tamanho"])
+        _escolha(self.w_comprimento, COMPRIMENTOS, v["comprimento"])
+        self.w_intellihide.set_active(v["intellihide"])
+        self.w_relogio2.set_active(v["relogio2"])
+        self.w_sem_visao.set_active(v["sem_visao"])
+        for dd, ops, k in ((self.w_gtk, self.op_gtk, "gtk_tema"),
+                           (self.w_icones, self.op_icones, "icones"),
+                           (self.w_cursor, self.op_cursor, "cursor")):
+            _escolha(dd, ops, v[k])
+        _escolha(self.w_estilo, ESTILOS, v["estilo"])
+        _escolha(self.w_cor, CORES, v["cor"])
+        _escolha(self.w_botoes, BOTOES_JANELA, v["botoes"])
+        self._set_fonte(self.w_fonte, v["fonte"])
+        self._set_fonte(self.w_fonte_mono, v["fonte_mono"])
+        for uuid, sw in self.w_ext.items():
+            sw.set_active(v["extensoes"].get(uuid, False))
+        if v["gsconnect_servico"] is not None:
+            self.w_gsconnect.set_active(v["gsconnect_servico"])
+        if v["forge_mosaico"] is not None:
+            self.w_forge.set_active(v["forge_mosaico"])
+
+    @staticmethod
+    def _set_fonte(botao, texto):
+        if texto:
+            botao.set_font_desc(Pango.FontDescription.from_string(texto))
+
+    @staticmethod
+    def _get_fonte(botao):
+        desc = botao.get_font_desc()
+        return desc.to_string() if desc else ""
+
+    def coletar(self):
+        return {
+            "ilhas": self.w_ilhas.get_active(),
+            "posicao": self._valor_dd(self.w_posicao),
+            "tamanho": int(self.w_tamanho.get_value()),
+            "comprimento": self._valor_dd(self.w_comprimento),
+            "intellihide": self.w_intellihide.get_active(),
+            "relogio2": self.w_relogio2.get_active(),
+            "sem_visao": self.w_sem_visao.get_active(),
+            "gtk_tema": self._valor_dd(self.w_gtk),
+            "icones": self._valor_dd(self.w_icones),
+            "cursor": self._valor_dd(self.w_cursor),
+            "estilo": self._valor_dd(self.w_estilo),
+            "cor": self._valor_dd(self.w_cor),
+            "fonte": self._get_fonte(self.w_fonte),
+            "fonte_mono": self._get_fonte(self.w_fonte_mono),
+            "botoes": self._valor_dd(self.w_botoes),
+            "extensoes": {u: sw.get_active() for u, sw in self.w_ext.items()},
+            "gsconnect_servico": self.w_gsconnect.get_active(),
+            "forge_mosaico": self.w_forge.get_active(),
+        }
+
+    def mostrar_papel(self, c):
+        self.papel_antes = dict(c)
+        self.papel = dict(c)
+        self.w_slideshow.set_active(c["DISABLED"].lower() not in ("yes", "true", "1"))
+        self.l_pasta.set_text(c["WALLPAPER_DIR"] or PAPEL_PASTA_VOIDBR)
+        try:
+            self.w_intervalo.set_value(int(c["INTERVAL"]))
+        except ValueError:
+            self.w_intervalo.set_value(60)
+        self._set_fixo(c["FIXED_WALLPAPER"])
+
+    def coletar_papel(self):
+        c = dict(self.papel)
+        c["DISABLED"] = "no" if self.w_slideshow.get_active() else "yes"
+        c["INTERVAL"] = str(int(self.w_intervalo.get_value()))
+        return c
+
+    def _set_fixo(self, caminho):
+        self.papel["FIXED_WALLPAPER"] = caminho
+        self.l_fixo.set_text(os.path.basename(caminho) if caminho else "— nenhum (slideshow) —")
+
+    def recarregar(self):
+        self.antes = valores_atuais()
+        self.mostrar(self.antes)
+        self.mostrar_papel(papel_ler())
+        self.status("✔ Configurações atuais carregadas.")
+
+    def status(self, texto):
+        self.label_status.set_text(texto)
+
+    # ----- botões -----
+
+    def ao_clicar_voidbr(self, *_):
+        self.mostrar(valores_voidbr())
+        p = dict(self.papel)
+        p.update({"WALLPAPER_DIR": PAPEL_PASTA_VOIDBR, "DISABLED": "no", "INTERVAL": "60",
+                  "START_WALLPAPER": PAPEL_INICIO_VOIDBR})
+        self.mostrar_papel_mantendo_antes(p)
+        self._set_fixo("")
+        self.status("↩️ Valores padrão do VoidBR carregados. Clique em ✅ Aplicar.")
+
+    def mostrar_papel_mantendo_antes(self, c):
+        antes = self.papel_antes
+        self.mostrar_papel(c)
+        self.papel_antes = antes
+
+    def ao_clicar_gnome(self, *_):
+        dlg = Gtk.AlertDialog(message="Carregar o padrão do GNOME?",
+                              detail="Barra no topo (Dash to Panel desligado), tema Adwaita, "
+                                     "destaque azul, relógio de uma linha, Visão Geral no login "
+                                     "e nenhuma extensão ligada.\n\nNada é gravado até você "
+                                     "clicar em ✅ Aplicar. O papel de parede não muda.")
+        dlg.set_buttons(["Cancelar", "Carregar"])
+        dlg.set_cancel_button(0)
+        dlg.set_default_button(1)
+
+        def resposta(d, res):
+            try:
+                if d.choose_finish(res) == 1:
+                    self.mostrar(valores_gnome())
+                    self.status("🔵 Valores padrão do GNOME carregados. Clique em ✅ Aplicar.")
+            except GLib.Error:
+                pass
+        dlg.choose(self, None, resposta)
+
+    def ao_clicar_aplicar(self, *_):
+        v = self.coletar()
+        feito = aplicar(v, self.antes)
+        papel = self.coletar_papel()
+        self.antes = valores_atuais()
+        if papel != self.papel_antes:
+            self.b_aplicar.set_sensitive(False)
+            self.status("🔒 Gravando o papel de parede (pode pedir senha)…")
+
+            def tarefa():
+                ok, msg = papel_gravar(papel)
+                GLib.idle_add(self._fim_papel, ok, msg, feito, papel)
+            threading.Thread(target=tarefa, daemon=True).start()
+        else:
+            self._mensagem_final(feito)
+
+    def _fim_papel(self, ok, msg, feito, papel):
+        self.b_aplicar.set_sensitive(True)
+        if ok:
+            self.papel_antes = dict(papel)
+            feito = feito + ["papel de parede"]
+            self._mensagem_final(feito)
+        else:
+            self.status(f"⚠️ {msg}" + (f" — o resto foi aplicado: {', '.join(feito)}." if feito else ""))
+        return False
+
+    def _mensagem_final(self, feito):
+        if not feito:
+            self.status("ℹ️ Nada mudou.")
+            return
+        extra = ""
+        if any(f in feito for f in ("extensões", "Visão Geral no login")):
+            extra = " Algumas mudanças valem no próximo login."
+        self.status("✅ Aplicado: " + ", ".join(feito) + "." + extra)
+
+    # ----- papel de parede -----
+
+    def ao_escolher_pasta(self, *_):
+        dlg = Gtk.FileDialog(title="Pasta das imagens", modal=True)
+        pasta = self.papel.get("WALLPAPER_DIR") or PAPEL_PASTA_VOIDBR
+        if os.path.isdir(pasta):
+            dlg.set_initial_folder(Gio.File.new_for_path(pasta))
+
+        def fim(d, res):
+            try:
+                f = d.select_folder_finish(res)
+            except GLib.Error:
+                return
+            if f and f.get_path():
+                self.papel["WALLPAPER_DIR"] = f.get_path()
+                self.l_pasta.set_text(f.get_path())
+        dlg.select_folder(self, None, fim)
+
+    def ao_escolher_fixo(self, *_):
+        dlg = Gtk.FileDialog(title="Papel de parede fixo", modal=True)
+        filtro = Gtk.FileFilter(name="Imagens")
+        filtro.add_mime_type("image/*")
+        lista = Gio.ListStore.new(Gtk.FileFilter)
+        lista.append(filtro)
+        dlg.set_filters(lista)
+        pasta = self.papel.get("WALLPAPER_DIR") or PAPEL_PASTA_VOIDBR
+        if os.path.isdir(pasta):
+            dlg.set_initial_folder(Gio.File.new_for_path(pasta))
+
+        def fim(d, res):
+            try:
+                f = d.open_finish(res)
+            except GLib.Error:
+                return
+            if f and f.get_path():
+                self._set_fixo(f.get_path())
+        dlg.open(self, None, fim)
+
+    # ----- extensões e diagnóstico -----
+
+    def ao_gerenciar_extensoes(self, *_):
+        for cmd in (["extension-manager"], ["gnome-extensions-app"]):
+            if shutil.which(cmd[0]):
+                subprocess.Popen(cmd, start_new_session=True)
+                return
+        self.status("⚠️ Extension Manager não está instalado.")
+
+    def _rodar_diag(self, args):
+        if not shutil.which("voidbr-gnome-diag"):
+            return "voidbr-gnome-diag não encontrado (voidbr-gnome-config)."
+        try:
+            p = subprocess.run(["voidbr-gnome-diag", *args], capture_output=True, text=True,
+                               timeout=30)
+            return (p.stdout + p.stderr).strip()
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return f"erro ao rodar voidbr-gnome-diag: {e}"
+
+    def atualizar_diagnostico(self):
+        self.saida.get_buffer().set_text(self._rodar_diag([]))
+
+    def ao_teste_extensoes(self, *_):
+        self.saida.get_buffer().set_text(self._rodar_diag(["teste"]))
+        self.antes = valores_atuais()
+
+    def ao_abrir_log(self, *_):
+        if os.path.exists(LOG_SESSAO):
+            Gio.AppInfo.launch_default_for_uri(Gio.File.new_for_path(LOG_SESSAO).get_uri(), None)
+        else:
+            self.status(f"⚠️ Log não encontrado: {LOG_SESSAO}")
+
+    # ----- fonte do app -----
+
+    def aplicar_fonte(self):
+        nome = Gtk.Settings.get_default().props.gtk_font_name or ""
+        m = re.search(r"(\d+(?:\.\d+)?)\s*$", nome)
+        base = float(m.group(1)) if m else 11.0
+        s = self.escala
+        self.css_fonte.load_from_data((
+            f"window, window * {{ font-size: {base * s:.1f}pt; }}\n"
+            f".titulo-app {{ font-size: {20 * s:.0f}px; }}\n"
+            f".subtitulo {{ font-size: {12 * s:.0f}px; }}\n"
+            f".dica {{ font-size: {11 * s:.0f}px; }}\n").encode("utf-8"))
+        for w in Gtk.Window.list_toplevels():
+            w.queue_resize()
+        self.b_escala.set_label(f"{round(s * 100)}%")
+        self.b_menor.set_sensitive(s > ESCALA_MIN + 0.001)
+        self.b_maior.set_sensitive(s < ESCALA_MAX - 0.001)
+
+    def mudar_fonte(self, passo):
+        nova = 1.0 if passo == 0 else round(self.escala + 0.1 * passo, 2)
+        nova = min(ESCALA_MAX, max(ESCALA_MIN, nova))
+        if nova == self.escala and passo:
+            return
+        self.escala = nova
+        self.aplicar_fonte()
+        try:
+            gravar_prefs_app(font_scale=nova)
+        except OSError:
+            pass
+
+    def ao_clicar_sobre(self, *_):
+        sobre = Gtk.AboutDialog(transient_for=self, modal=True)
+        sobre.set_program_name("VoidBR GNOME Tweaks")
+        sobre.set_version(VERSAO)
+        sobre.set_comments("Ajustes do GNOME do VoidBR:\nbarra em ilhas, aparência, papel de "
+                           "parede,\nextensões e tempo do login.")
+        sobre.set_authors(["Vilmar Catafesta <vcatafesta@gmail.com>"])
+        sobre.set_copyright("© 2026 Vilmar Catafesta")
+        sobre.set_website("https://voidbr.org")
+        sobre.set_website_label("voidbr.org")
+        sobre.set_license_type(Gtk.License.BSD)
+        sobre.set_logo_icon_name("preferences-desktop-theme")
+        sobre.present()
+
+
+class AppTweaks(Gtk.Application):
+    def __init__(self, aba=None):
+        super().__init__(application_id=APP_ID,
+                         flags=getattr(Gio.ApplicationFlags, "DEFAULT_FLAGS",
+                                       Gio.ApplicationFlags.FLAGS_NONE))
+        self.aba = aba
+
+    def do_activate(self):
+        janela = self.props.active_window or JanelaTweaks(self, self.aba)
+        janela.present()
+
+
+def main():
+    args = sys.argv[1:]
+    if "--version" in args:
+        print(f"voidbr-gnome-tweaks {VERSAO}")
+        return 0
+    if "--help" in args or "-h" in args:
+        print("Uso: voidbr-gnome-tweaks [--aba barra|aparencia|papel|extensoes|diagnostico]\n"
+              "                           [--padrao-voidbr | --padrao-gnome]")
+        return 0
+    if "--padrao-voidbr" in args or "--padrao-gnome" in args:
+        novo = valores_voidbr() if "--padrao-voidbr" in args else valores_gnome()
+        feito = aplicar(novo, valores_atuais())
+        print("Aplicado: " + (", ".join(feito) if feito else "nada mudou"))
+        return 0
+    aba = None
+    if "--aba" in args:
+        i = args.index("--aba")
+        aba = args[i + 1] if i + 1 < len(args) else None
+    return AppTweaks(aba).run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    sys.exit(main())

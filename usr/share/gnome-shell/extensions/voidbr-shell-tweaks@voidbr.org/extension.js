@@ -18,11 +18,33 @@ let firstEnable = true;
 
 export default class VoidBRShellTweaks extends Extension {
     enable() {
-        this._enableNoOverview();
-        this._enableTwoLineClock();
+        // chaves em org.gnome.shell.extensions.voidbr-shell-tweaks
+        // (o voidbr-gnome-tweaks liga e desliga cada parte por elas)
+        this._settings = this.getSettings();
+
+        if (this._settings.get_boolean('no-overview'))
+            this._enableNoOverview();
+        else
+            firstEnable = false;
+
+        if (this._settings.get_boolean('two-line-clock'))
+            this._enableTwoLineClock();
+
+        this._clockSettingId = this._settings.connect('changed::two-line-clock', () => {
+            if (this._settings.get_boolean('two-line-clock'))
+                this._enableTwoLineClock();
+            else
+                this._disableTwoLineClock();
+        });
     }
 
     disable() {
+        if (this._clockSettingId) {
+            this._settings.disconnect(this._clockSettingId);
+            this._clockSettingId = 0;
+        }
+        this._settings = null;
+
         this._disableTwoLineClock();
         this._disableNoOverview();
     }
@@ -75,7 +97,7 @@ export default class VoidBRShellTweaks extends Extension {
     // --- relógio em duas linhas -----------------------------------------
     _enableTwoLineClock() {
         const dateMenu = Main.panel.statusArea.dateMenu;
-        if (!dateMenu)
+        if (!dateMenu || this._dateMenu)
             return;
 
         this._dateMenu = dateMenu;

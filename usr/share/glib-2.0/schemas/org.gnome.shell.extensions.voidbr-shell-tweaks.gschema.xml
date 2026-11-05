@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="voidbr-shell-tweaks">
+  <schema id="org.gnome.shell.extensions.voidbr-shell-tweaks" path="/org/gnome/shell/extensions/voidbr-shell-tweaks/">
+    <key name="two-line-clock" type="b">
+      <default>true</default>
+      <summary>Relógio em duas linhas</summary>
+      <description>Mostra a hora em cima e a data embaixo no relógio do painel.</description>
+    </key>
+    <key name="no-overview" type="b">
+      <default>true</default>
+      <summary>Abrir na área de trabalho</summary>
+      <description>Não mostra a Visão Geral depois do login.</description>
+    </key>
+  </schema>
+</schemalist>
