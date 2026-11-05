@@ -28,7 +28,7 @@
 #panel.dashtopanelMainPanel #dashtopanelTaskbar,
 #panel.dashtopanelMainPanel #panelRight,
 #panel.dashtopanelMainPanel .panel-status-indicators-box,
-#panel.dashtopanelMainPanel .panel-button.clock-display {
+#panel.dashtopanelMainPanel .clock-display .clock-display-box {
   background-color: rgba(26, 27, 38, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
@@ -55,15 +55,24 @@
   padding: 0 10px;
 }
 
+/* cada indicador do GNOME 48 (SystemIndicator) tambem usa a classe
+ * panel-status-indicators-box: os de dentro ficam sem fundo, so o de fora e ilha */
+#panel.dashtopanelMainPanel .panel-status-indicators-box .panel-status-indicators-box {
+  background-color: transparent;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
 #panel.dashtopanelMainPanel .panel-status-indicators-box .system-status-icon {
   background-color: transparent;
   box-shadow: none;
 }
 
-/* ilha 4: relogio */
-#panel.dashtopanelMainPanel .panel-button.clock-display {
+/* ilha 4: relogio (a ilha fica na caixa de dentro do botao) */
+#panel.dashtopanelMainPanel .clock-display .clock-display-box {
   margin-left: 8px;
-  padding: 0 6px;
+  padding: 0 12px;
 }
 
 /* hover: clareia a ilha inteira em vez de desenhar pilulas soltas */
@@ -72,14 +81,14 @@
   box-shadow: none;
 }
 
-#panel.dashtopanelMainPanel .panel-button:hover .panel-status-indicators-box,
-#panel.dashtopanelMainPanel .panel-button.clock-display:hover {
+#panel.dashtopanelMainPanel .panel-button:hover > .panel-status-indicators-box,
+#panel.dashtopanelMainPanel .clock-display:hover .clock-display-box {
   background-color: rgba(41, 46, 66, 0.92);
 }
 
 /* item aberto: borda na cor de destaque escolhida pelo usuario */
-#panel.dashtopanelMainPanel .panel-button:checked .panel-status-indicators-box,
-#panel.dashtopanelMainPanel .panel-button.clock-display:checked,
+#panel.dashtopanelMainPanel .panel-button:checked > .panel-status-indicators-box,
+#panel.dashtopanelMainPanel .clock-display:checked .clock-display-box,
 #panel.dashtopanelMainPanel .show-apps:checked {
   border-color: -st-accent-color;
 }
