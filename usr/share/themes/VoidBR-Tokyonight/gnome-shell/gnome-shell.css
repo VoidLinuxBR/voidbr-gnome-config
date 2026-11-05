@@ -17,10 +17,28 @@
   margin: 0;
 }
 
-/* o botao em volta de cada item fica transparente: quem aparece e a ilha */
+/* o botao em volta de cada item fica transparente: quem aparece e a ilha.
+ * Sem padding horizontal: a distancia entre as ilhas e so a margem delas (8px). */
 #panel.dashtopanelMainPanel .panel-button {
   background-color: transparent;
   box-shadow: none;
+  -natural-hpadding: 0;
+  -minimum-hpadding: 0;
+}
+
+/* dentro da ilha das extensoes, cada botao ganha o proprio respiro */
+#panel.dashtopanelMainPanel #panelRight .panel-button {
+  -natural-hpadding: 8px;
+  -minimum-hpadding: 6px;
+}
+
+/* extensoes como a extension-list tambem usam panel-status-indicators-box:
+ * dentro da ilha das extensoes elas nao viram ilha de novo */
+#panel.dashtopanelMainPanel #panelRight .panel-status-indicators-box {
+  background-color: transparent;
+  border: none;
+  margin: 0;
+  padding: 0;
 }
 
 /* fundo comum de todas as ilhas (azul-noite do Tokyo Night) */
@@ -52,7 +70,8 @@
 /* ilha 3: bandeja (rede, som, energia) numa ilha so */
 #panel.dashtopanelMainPanel .panel-status-indicators-box {
   margin-left: 8px;
-  padding: 0 10px;
+  padding: 0 12px;
+  spacing: 10px;
 }
 
 /* cada indicador do GNOME 48 (SystemIndicator) tambem usa a classe
@@ -72,7 +91,13 @@
 /* ilha 4: relogio (a ilha fica na caixa de dentro do botao) */
 #panel.dashtopanelMainPanel .clock-display .clock-display-box {
   margin-left: 8px;
-  padding: 0 12px;
+  padding: 0 14px;
+}
+
+/* relogio em 2 linhas (extensao voidbr-shell-tweaks): hora em cima, data embaixo */
+#panel.dashtopanelMainPanel .clock-display .clock {
+  font-size: 10.5pt;
+  text-align: center;
 }
 
 /* hover: clareia a ilha inteira em vez de desenhar pilulas soltas */
