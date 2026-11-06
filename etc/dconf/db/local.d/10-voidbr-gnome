@@ -10,3 +10,58 @@ enabled=false
 # Forge: extensão ligada, mosaico desligado (o usuário liga nas preferências do Forge)
 [org/gnome/shell/extensions/forge]
 tiling-mode-enabled=false
+
+# Grade de apps organizada por categoria (pastas). A pasta VoidBR junta os apps
+# chili-*, voidbr-* e org.voidbr.*: a lista deles (e a exclusão nas outras pastas)
+# fica no 20-voidbr-gnome-apps, gerado no post_install. Pasta vazia não aparece.
+# O voidbr-gnome-tweaks (aba Categorias) liga/desliga cada uma por usuário.
+[org/gnome/desktop/app-folders]
+folder-children=['voidbr-voidbr', 'voidbr-internet', 'voidbr-escritorio', 'voidbr-graficos', 'voidbr-multimidia', 'voidbr-desenvolvimento', 'voidbr-jogos', 'voidbr-utilitarios', 'voidbr-sistema']
+
+[org/gnome/desktop/app-folders/folders/voidbr-voidbr]
+name='VoidBR'
+translate=false
+
+[org/gnome/desktop/app-folders/folders/voidbr-internet]
+name='Internet'
+translate=false
+categories=['Network']
+
+[org/gnome/desktop/app-folders/folders/voidbr-escritorio]
+name='Escritório'
+translate=false
+categories=['Office']
+
+[org/gnome/desktop/app-folders/folders/voidbr-graficos]
+name='Gráficos'
+translate=false
+categories=['Graphics']
+
+[org/gnome/desktop/app-folders/folders/voidbr-multimidia]
+name='Multimídia'
+translate=false
+categories=['AudioVideo']
+
+[org/gnome/desktop/app-folders/folders/voidbr-desenvolvimento]
+name='Desenvolvimento'
+translate=false
+categories=['Development']
+
+[org/gnome/desktop/app-folders/folders/voidbr-jogos]
+name='Jogos'
+translate=false
+categories=['Game']
+
+[org/gnome/desktop/app-folders/folders/voidbr-utilitarios]
+name='Utilitários'
+translate=false
+categories=['Utility']
+
+[org/gnome/desktop/app-folders/folders/voidbr-sistema]
+name='Sistema'
+translate=false
+categories=['System', 'Settings']
+
+# Categorias no início da grade, nesta ordem; os outros apps vêm depois, em ordem alfabética
+[org/gnome/shell]
+app-picker-layout=[{'voidbr-voidbr': <{'position': <0>}>, 'voidbr-internet': <{'position': <1>}>, 'voidbr-escritorio': <{'position': <2>}>, 'voidbr-graficos': <{'position': <3>}>, 'voidbr-multimidia': <{'position': <4>}>, 'voidbr-desenvolvimento': <{'position': <5>}>, 'voidbr-jogos': <{'position': <6>}>, 'voidbr-utilitarios': <{'position': <7>}>, 'voidbr-sistema': <{'position': <8>}>}]

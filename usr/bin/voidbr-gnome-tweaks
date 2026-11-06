@@ -3,7 +3,7 @@
 #
 #   voidbr-gnome-tweaks
 #   Created: qui 05 nov 2026 00:40:00 -04
-#   Altered: qui 05 nov 2026 13:50:00 -04
+#   Altered: sex 06 nov 2026 00:10:00 -04
 #
 #   Copyright (c) 2026, Vilmar Catafesta <vcatafesta@gmail.com>
 #   Copyright (c) 2026, VoidLinuxBR Team
@@ -22,6 +22,12 @@
 #   - v1.2 (2026-11-05): Botões da barra de título (minimizar/maximizar/fechar)
 #     voltam a seguir o tema do sistema; o estilo escuro dos botões fica só no
 #     conteúdo da janela.
+#   - v1.3 (2026-11-06): Aba Categorias: organiza a grade de apps em pastas por
+#     categoria (VoidBR, Internet, Escritório, Gráficos, Multimídia,
+#     Desenvolvimento, Jogos, Utilitários e Sistema), liga/desliga cada uma e
+#     põe as categorias no início da grade. Padrão GNOME volta às pastas do GNOME.
+#     Padrão VoidBR (e Clássico) põe na barra de favoritos o VoidBR GNOME Tweaks
+#     e o VoidBR AI, se faltarem; os outros favoritos do usuário não mudam.
 #
 #   Redistribution and use in source and binary forms, with or without
 #   modification, are permitted provided that the following conditions
@@ -53,7 +59,8 @@ Requer: PyGObject (GTK4).
 O que o app altera (sempre no usuário atual, pelo GSettings/dconf):
     org.gnome.desktop.interface           tema, ícones, cursor, cores, fontes
     org.gnome.desktop.wm.preferences      botões da janela
-    org.gnome.shell                       extensões ligadas
+    org.gnome.shell                       extensões ligadas, ordem da grade
+    org.gnome.desktop.app-folders         categorias (pastas) da grade de apps
     org.gnome.shell.extensions.*          Dash to Panel, User Themes,
                                           voidbr-shell-tweaks, GSConnect, Forge
     ~/.config/voidbr/gnome-tweaks.json    fonte do próprio app
@@ -77,7 +84,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Pango", "1.0")
 from gi.repository import Gtk, GLib, Gio, Pango
 
-VERSAO = "1.2"
+VERSAO = "1.3"
 APP_ID = "org.voidbr.GnomeTweaks"
 
 CONFIG = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
@@ -104,6 +111,8 @@ S_THEME = "org.gnome.shell.extensions.user-theme"
 S_TWEAKS = "org.gnome.shell.extensions.voidbr-shell-tweaks"
 S_GSCONNECT = "org.gnome.Shell.Extensions.GSConnect"
 S_FORGE = "org.gnome.shell.extensions.forge"
+S_PASTAS = "org.gnome.desktop.app-folders"
+S_PASTA = "org.gnome.desktop.app-folders.folder"
 
 UUID_DTP = "dash-to-panel@jderose9.github.com"
 UUID_DTD = "dash-to-dock@micxgx.gmail.com"
@@ -127,6 +136,41 @@ EXTENSOES = [
     (UUID_GSCONNECT, "GSConnect", "integração com o celular (KDE Connect)"),
     (UUID_FORGE, "Forge", "mosaico de janelas"),
 ]
+
+# categorias da grade de apps, na ordem em que aparecem (id, nome, categorias do .desktop, dica).
+# A VoidBR não usa categoria: junta os apps pelo nome do arquivo (PREFIXOS_VOIDBR).
+CATEGORIAS = [
+    ("voidbr", "VoidBR", None, "ferramentas da distro (apps chili-*, voidbr-*)"),
+    ("internet", "Internet", ["Network"], "navegador, e-mail, mensagens"),
+    ("escritorio", "Escritório", ["Office"], "documentos, planilhas, calendário"),
+    ("graficos", "Gráficos", ["Graphics"], "imagens, desenho, digitalização"),
+    ("multimidia", "Multimídia", ["AudioVideo"], "música, vídeos, câmera"),
+    ("desenvolvimento", "Desenvolvimento", ["Development"], "editores e IDEs"),
+    ("jogos", "Jogos", ["Game"], "jogos"),
+    ("utilitarios", "Utilitários", ["Utility"], "calculadora, caracteres, relógios"),
+    ("sistema", "Sistema", ["System", "Settings"], "terminal, configurações, monitor"),
+]
+# favoritos do VoidBR na barra: o Padrão VoidBR acrescenta no fim os que faltarem
+# (só se estiverem instalados); o resto dos favoritos é do usuário e não muda
+FAVORITOS_VOIDBR = ["org.voidbr.GnomeTweaks.desktop", "voidbr-ai.desktop"]
+
+PREFIXOS_VOIDBR = ("chili-", "voidbr-", "org.voidbr.")
+CAMINHO_PASTAS = "/org/gnome/desktop/app-folders/folders/"
+
+# pastas que o próprio GNOME 48 cria (js/ui/appDisplay.js e data/default-apps/*.txt)
+PASTAS_GNOME = {
+    "System": ("X-GNOME-Shell-System.directory", None, [
+        "nm-connection-editor.desktop", "org.gnome.DejaDup.desktop", "org.gnome.baobab.desktop",
+        "org.gnome.DiskUtility.desktop", "org.gnome.Logs.desktop",
+        "org.freedesktop.MalcontentControl.desktop", "org.freedesktop.GnomeAbrt.desktop",
+        "org.gnome.tweaks.desktop", "org.gnome.Sysprof.desktop", "org.gnome.SystemMonitor.desktop"]),
+    "Utilities": ("X-GNOME-Shell-Utilities.directory", None, [
+        "org.gnome.Decibels.desktop", "org.gnome.Connections.desktop", "org.gnome.Evince.desktop",
+        "org.gnome.FileRoller.desktop", "org.gnome.font-viewer.desktop", "org.gnome.Loupe.desktop",
+        "org.gnome.seahorse.Application.desktop"]),
+    "YaST": ("suse-yast.directory", ["X-SuSE-YaST"], None),
+    "Pardus": ("X-Pardus-Apps.directory", ["X-Pardus-Apps"], None),
+}
 
 POSICOES = [("BOTTOM", "⬇️ Embaixo"), ("TOP", "⬆️ Em cima"),
             ("LEFT", "⬅️ Esquerda"), ("RIGHT", "➡️ Direita")]
@@ -451,6 +495,109 @@ def papel_gravar(conf):
 
 
 # ---------------------------------------------------------------------------
+#   categorias da grade de apps (pastas do GNOME)
+# ---------------------------------------------------------------------------
+
+def pasta_id(cat):
+    return f"voidbr-{cat}"
+
+
+def pasta_settings(pid):
+    """Gio.Settings de uma pasta (schema relocável), ou None."""
+    fonte = Gio.SettingsSchemaSource.get_default()
+    schema = fonte.lookup(S_PASTA, True) if fonte else None
+    if schema is None:
+        return None
+    return Gio.Settings.new_full(schema, None, f"{CAMINHO_PASTAS}{pid}/")
+
+
+def apps_instalados():
+    return {a.get_id() for a in Gio.AppInfo.get_all() if a.get_id()}
+
+
+def apps_voidbr():
+    """Apps do VoidBR instalados agora (vão só para a categoria VoidBR)."""
+    return sorted(i for i in apps_instalados() if i.startswith(PREFIXOS_VOIDBR))
+
+
+def categorias_ler():
+    filhos = ler(S_PASTAS, "folder-children") or []
+    return {c: (pasta_id(c) in filhos) for c, *_ in CATEGORIAS}
+
+
+def categorias_apps_atuais():
+    p = pasta_settings(pasta_id("voidbr"))
+    return sorted(p.get_strv("apps")) if p else []
+
+
+def categorias_gravar(ligadas, apps):
+    """Liga as categorias marcadas (na ordem de CATEGORIAS) e mantém as pastas que o
+    usuário criou. Nenhuma marcada: volta às pastas do GNOME."""
+    if settings(S_PASTAS) is None:
+        return False
+    atual = ler(S_PASTAS, "folder-children") or []
+    nossas = [pasta_id(c) for c, *_ in CATEGORIAS if ligadas.get(c)]
+    do_usuario = [f for f in atual if not f.startswith("voidbr-") and f not in PASTAS_GNOME]
+    voidbr_ligada = bool(ligadas.get("voidbr"))
+    todos_voidbr = set(apps_voidbr()) | set(apps or [])
+
+    if nossas:
+        for c, nome, cats, _d in CATEGORIAS:
+            if not ligadas.get(c):
+                continue
+            p = pasta_settings(pasta_id(c))
+            p.set_string("name", nome)
+            p.set_boolean("translate", False)
+            if cats is None:
+                p.set_strv("apps", list(apps or []))
+                p.set_strv("categories", [])
+            else:
+                p.set_strv("categories", cats)
+                # tira da lista os apps do VoidBR e põe de volta só se a VoidBR estiver ligada
+                fora = [a for a in p.get_strv("excluded-apps") if a not in todos_voidbr]
+                p.set_strv("excluded-apps", fora + (list(apps or []) if voidbr_ligada else []))
+        filhos = nossas + do_usuario
+    else:
+        instalados = apps_instalados()
+        for pid, (nome, cats, lista) in PASTAS_GNOME.items():
+            p = pasta_settings(pid)
+            if p is None:
+                continue
+            p.set_string("name", nome)
+            p.set_boolean("translate", True)
+            if cats:
+                p.set_strv("categories", cats)
+            if lista:
+                p.set_strv("apps", [a for a in lista if a in instalados])
+        filhos = list(PASTAS_GNOME) + do_usuario
+    gravar(S_PASTAS, "folder-children", filhos)
+    return True
+
+
+def favoritos_voidbr_completar():
+    """Acrescenta no fim da barra os favoritos do VoidBR que faltam. Retorna os acrescentados."""
+    atual = list(ler(S_SHELL, "favorite-apps") or [])
+    instalados = apps_instalados()
+    faltam = [a for a in FAVORITOS_VOIDBR if a not in atual and a in instalados]
+    if faltam:
+        gravar(S_SHELL, "favorite-apps", atual + faltam)
+    return faltam
+
+
+def grade_ordenar(ligadas):
+    """Categorias no início da grade (na ordem de CATEGORIAS); os outros apps
+    vêm depois, em ordem alfabética. Sem categorias: ordem alfabética do GNOME."""
+    gs = settings(S_SHELL)
+    if not tem_chave(gs, "app-picker-layout"):
+        return False
+    nossas = [pasta_id(c) for c, *_ in CATEGORIAS if ligadas.get(c)]
+    pagina = {pid: GLib.Variant("a{sv}", {"position": GLib.Variant("i", i)})
+              for i, pid in enumerate(nossas)}
+    gs.set_value("app-picker-layout", GLib.Variant("aa{sv}", [pagina] if pagina else []))
+    return True
+
+
+# ---------------------------------------------------------------------------
 #   valores: atual, Padrão VoidBR e Padrão GNOME
 # ---------------------------------------------------------------------------
 
@@ -476,6 +623,9 @@ def valores_atuais():
         "extensoes": {u: (u in ext) for u, _n, _d in EXTENSOES},
         "gsconnect_servico": bool(ler(S_GSCONNECT, "enabled", UUID_GSCONNECT)),
         "forge_mosaico": bool(ler(S_FORGE, "tiling-mode-enabled", UUID_FORGE)),
+        "categorias": categorias_ler(),
+        "cat_apps": categorias_apps_atuais(),
+        "cat_ordem": False,
     }
 
 
@@ -508,6 +658,10 @@ def valores_voidbr():
         "extensoes": {u: (u in ext) for u, _n, _d in EXTENSOES},
         "gsconnect_servico": False,
         "forge_mosaico": False,
+        "categorias": {c: True for c, *_ in CATEGORIAS},
+        "cat_apps": apps_voidbr(),
+        "cat_ordem": True,
+        "fav_voidbr": True,
     }
 
 
@@ -535,6 +689,10 @@ def valores_gnome():
         "extensoes": {u: False for u, _n, _d in EXTENSOES},
         "gsconnect_servico": None,
         "forge_mosaico": None,
+        # pastas do GNOME (Sistema e Utilitários) e grade em ordem alfabética
+        "categorias": {c: False for c, *_ in CATEGORIAS},
+        "cat_apps": None,
+        "cat_ordem": True,
     }
 
 
@@ -616,6 +774,19 @@ def aplicar(v, antes):
     if mudou("forge_mosaico"):
         gravar(S_FORGE, "tiling-mode-enabled", v["forge_mosaico"], UUID_FORGE)
         feito.append("mosaico do Forge")
+
+    # --- categorias da grade de apps ---
+    if v.get("categorias") is not None:
+        apps_mudaram = v["categorias"].get("voidbr") and mudou("cat_apps")
+        if mudou("categorias") or apps_mudaram:
+            if categorias_gravar(v["categorias"], v.get("cat_apps")):
+                feito.append("categorias")
+        if v.get("cat_ordem") and grade_ordenar(v["categorias"]):
+            feito.append("ordem da grade")
+
+    # --- favoritos do VoidBR na barra (Padrão VoidBR e Clássico) ---
+    if v.get("fav_voidbr") and favoritos_voidbr_completar():
+        feito.append("favoritos do VoidBR na barra")
 
     Gio.Settings.sync()
     return feito
@@ -710,7 +881,8 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         titulo = Gtk.Label(label="🛠️ VoidBR GNOME Tweaks", xalign=0)
         titulo.add_css_class("titulo-app")
         caixa.append(titulo)
-        sub = Gtk.Label(label="Barra em ilhas, aparência, papel de parede, extensões e tempo do login",
+        sub = Gtk.Label(label="Barra em ilhas, aparência, papel de parede, categorias, extensões "
+                              "e tempo do login",
                         xalign=0)
         sub.add_css_class("subtitulo")
         caixa.append(sub)
@@ -721,6 +893,7 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         for chave, rotulo, fabrica in (("barra", "🧱 Barra", self._aba_barra),
                                        ("aparencia", "🎨 Aparência", self._aba_aparencia),
                                        ("papel", "🖼️ Papel de parede", self._aba_papel),
+                                       ("categorias", "📁 Categorias", self._aba_categorias),
                                        ("extensoes", "🧩 Extensões", self._aba_extensoes),
                                        ("diagnostico", "⏱️ Diagnóstico", self._aba_diagnostico)):
             rolagem = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
@@ -751,6 +924,7 @@ class JanelaTweaks(Gtk.ApplicationWindow):
             linha.append(b)
         caixa.append(linha)
 
+        self.fav_voidbr = False   # vira True com Padrão VoidBR/Clássico, até o Aplicar
         self.recarregar()
         if aba_inicial in self.indice_aba:
             self.abas.set_current_page(self.indice_aba[aba_inicial])
@@ -903,6 +1077,43 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         self._aviso(g, "🔒 Esta aba grava em /etc: ao aplicar, o sistema pede a sua senha.")
         return g
 
+    def _aba_categorias(self):
+        g = self._grade("Grade de apps")
+        if settings(S_PASTAS) is None:
+            self._aviso(g, "⚠️ Schema org.gnome.desktop.app-folders não encontrado "
+                           "(gsettings-desktop-schemas).")
+        self.w_cat_on = self._chave(g, "Organizar apps por categoria",
+                                    "desligado: volta às pastas do GNOME (Sistema e Utilitários)")
+        self._secao(g, "Categorias")
+        caixa = Gtk.Grid(column_spacing=24, row_spacing=6)
+        self.w_cat = {}
+        for i, (c, nome, _cats, dica) in enumerate(CATEGORIAS):
+            cb = Gtk.CheckButton(label=nome, tooltip_text=dica)
+            caixa.attach(cb, i % 2, i // 2, 1, 1)
+            self.w_cat[c] = cb
+        g.attach(caixa, 0, g._linha, 3, 1)
+        g._linha += 1
+        self._secao(g, "Ordem")
+        self.w_cat_ordem = self._chave(g, "Colocar as categorias no início da grade",
+                                       "reorganiza a grade: categorias primeiro, na ordem acima, "
+                                       "e os outros apps em ordem alfabética")
+        d = Gtk.Label(label="Pasta vazia não aparece. Para renomear uma pasta ou mover um app "
+                            "para dentro/fora dela, use a própria grade do GNOME.",
+                      xalign=0, wrap=True)
+        d.add_css_class("dica")
+        g.attach(d, 0, g._linha, 3, 1)
+        g._linha += 1
+        self.w_cat_on.connect("notify::active", self._ao_mudar_categorias)
+        return g
+
+    def _ao_mudar_categorias(self, sw, _p=None):
+        ligado = sw.get_active()
+        if ligado and not any(cb.get_active() for cb in self.w_cat.values()):
+            for cb in self.w_cat.values():
+                cb.set_active(True)
+        for cb in self.w_cat.values():
+            cb.set_sensitive(ligado)
+
     def _aba_extensoes(self):
         g = self._grade("Extensões ligadas")
         self.w_ext = {}
@@ -971,6 +1182,12 @@ class JanelaTweaks(Gtk.ApplicationWindow):
             self.w_gsconnect.set_active(v["gsconnect_servico"])
         if v["forge_mosaico"] is not None:
             self.w_forge.set_active(v["forge_mosaico"])
+        ligado = any(v["categorias"].values())
+        for c, cb in self.w_cat.items():
+            cb.set_active(v["categorias"].get(c, False) if ligado else True)
+        self.w_cat_on.set_active(ligado)
+        self._ao_mudar_categorias(self.w_cat_on)
+        self.w_cat_ordem.set_active(bool(v["cat_ordem"]))
 
     @staticmethod
     def _set_fonte(botao, texto):
@@ -1002,6 +1219,11 @@ class JanelaTweaks(Gtk.ApplicationWindow):
             "extensoes": {u: sw.get_active() for u, sw in self.w_ext.items()},
             "gsconnect_servico": self.w_gsconnect.get_active(),
             "forge_mosaico": self.w_forge.get_active(),
+            "categorias": {c: self.w_cat_on.get_active() and cb.get_active()
+                           for c, cb in self.w_cat.items()},
+            "cat_apps": apps_voidbr(),
+            "cat_ordem": self.w_cat_ordem.get_active(),
+            "fav_voidbr": self.fav_voidbr,
         }
 
     def mostrar_papel(self, c):
@@ -1038,6 +1260,7 @@ class JanelaTweaks(Gtk.ApplicationWindow):
 
     def ao_clicar_voidbr(self, *_):
         self.mostrar(valores_voidbr())
+        self.fav_voidbr = True
         p = dict(self.papel)
         p.update({"WALLPAPER_DIR": PAPEL_PASTA_VOIDBR, "DISABLED": "no", "INTERVAL": "60",
                   "START_WALLPAPER": PAPEL_INICIO_VOIDBR})
@@ -1060,14 +1283,15 @@ class JanelaTweaks(Gtk.ApplicationWindow):
             dlg.choose(self, None, None)
             return
         self.mostrar(valores_classico())
+        self.fav_voidbr = True
         self.status("🧭 Visual Clássico carregado (barra do GNOME no topo + Dash to Dock). "
                     "Clique em ✅ Aplicar.")
 
     def ao_clicar_gnome(self, *_):
         dlg = Gtk.AlertDialog(message="Carregar o padrão do GNOME?",
                               detail="Barra no topo (Dash to Panel desligado), tema Adwaita, "
-                                     "destaque azul, relógio de uma linha, Visão Geral no login "
-                                     "e nenhuma extensão ligada.\n\nNada é gravado até você "
+                                     "destaque azul, relógio de uma linha, Visão Geral no login, "
+                                     "pastas do GNOME na grade de apps e nenhuma extensão ligada.\n\nNada é gravado até você "
                                      "clicar em ✅ Aplicar. O papel de parede não muda.")
         dlg.set_buttons(["Cancelar", "Carregar"])
         dlg.set_cancel_button(0)
@@ -1077,6 +1301,7 @@ class JanelaTweaks(Gtk.ApplicationWindow):
             try:
                 if d.choose_finish(res) == 1:
                     self.mostrar(valores_gnome())
+                    self.fav_voidbr = False
                     self.status("🔵 Valores padrão do GNOME carregados. Clique em ✅ Aplicar.")
             except GLib.Error:
                 pass
@@ -1087,6 +1312,8 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         feito = aplicar(v, self.antes)
         papel = self.coletar_papel()
         self.antes = valores_atuais()
+        self.w_cat_ordem.set_active(False)
+        self.fav_voidbr = False
         if papel != self.papel_antes:
             self.b_aplicar.set_sensitive(False)
             self.status("🔒 Gravando o papel de parede (pode pedir senha)…")
@@ -1222,7 +1449,7 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         sobre.set_program_name("VoidBR GNOME Tweaks")
         sobre.set_version(VERSAO)
         sobre.set_comments("Ajustes do GNOME do VoidBR:\nbarra em ilhas, aparência, papel de "
-                           "parede,\nextensões e tempo do login.")
+                           "parede,\ncategorias, extensões e tempo do login.")
         sobre.set_authors(["Vilmar Catafesta <vcatafesta@gmail.com>"])
         sobre.set_copyright("© 2026 Vilmar Catafesta")
         sobre.set_website("https://voidbr.org")
@@ -1250,7 +1477,7 @@ def main():
         print(f"voidbr-gnome-tweaks {VERSAO}")
         return 0
     if "--help" in args or "-h" in args:
-        print("Uso: voidbr-gnome-tweaks [--aba barra|aparencia|papel|extensoes|diagnostico]\n"
+        print("Uso: voidbr-gnome-tweaks [--aba barra|aparencia|papel|categorias|extensoes|diagnostico]\n"
               "                           [--padrao-voidbr | --padrao-classico | --padrao-gnome]")
         return 0
     if "--padrao-voidbr" in args or "--padrao-gnome" in args or "--padrao-classico" in args:

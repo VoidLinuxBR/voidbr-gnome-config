@@ -40,7 +40,7 @@ center-new-windows=true
 
 [org.gnome.shell]
 enabled-extensions=['user-theme@gnome-shell-extensions.gcampax.github.com', 'status-icons@gnome-shell-extensions.gcampax.github.com', 'extension-list@tu.berry', 'gsconnect@andyholmes.github.io', 'forge@jmmaranan.com', 'dash-to-panel@jderose9.github.com', 'voidbr-shell-tweaks@voidbr.org']
-favorite-apps=['org.gnome.Nautilus.desktop', 'firefox.desktop', 'org.gnome.Terminal.desktop', 'org.gnome.Settings.desktop', 'com.mattjakeman.ExtensionManager.desktop', 'org.voidbr.GnomeTweaks.desktop']
+favorite-apps=['org.gnome.Nautilus.desktop', 'firefox.desktop', 'org.gnome.Terminal.desktop', 'xfce4-terminal.desktop', 'org.gnome.Settings.desktop', 'com.mattjakeman.ExtensionManager.desktop', 'org.voidbr.GnomeTweaks.desktop', 'voidbr-ai.desktop']
 
 [org.gnome.shell.extensions.user-theme]
 name='VoidBR-Tokyonight'

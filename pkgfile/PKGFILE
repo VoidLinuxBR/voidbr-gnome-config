@@ -57,7 +57,32 @@ post_install() {
   log "Compilando schemas do GSettings"
   glib-compile-schemas /usr/share/glib-2.0/schemas || true
 
-  # Padrões do dconf (/etc/dconf/db/local.d): GSConnect e mosaico do Forge desligados
+  # Categorias da grade: a pasta VoidBR leva os apps chili-*, voidbr-* e org.voidbr.*
+  # instalados agora, e as outras pastas não mostram esses apps (sem repetir)
+  log "Gerando a lista de apps da categoria VoidBR"
+  local f c lista=""
+  for f in /usr/share/applications/chili-*.desktop /usr/share/applications/voidbr-*.desktop \
+    /usr/share/applications/org.voidbr.*.desktop; do
+    [ -e "$f" ] && lista="$lista'${f##*/}', "
+  done
+  if [ -n "$lista" ]; then
+    lista="[${lista%, }]"
+  else
+    lista="@as []"
+  fi
+  {
+    echo "# Gerado pelo post_install do voidbr-gnome-config (não editar)"
+    echo "[org/gnome/desktop/app-folders/folders/voidbr-voidbr]"
+    echo "apps=$lista"
+    for c in internet escritorio graficos multimidia desenvolvimento jogos utilitarios sistema; do
+      echo
+      echo "[org/gnome/desktop/app-folders/folders/voidbr-$c]"
+      echo "excluded-apps=$lista"
+    done
+  } >/etc/dconf/db/local.d/20-voidbr-gnome-apps
+
+  # Padrões do dconf (/etc/dconf/db/local.d): GSConnect e mosaico do Forge desligados,
+  # categorias da grade de apps
   log "Atualizando o banco do dconf"
   dconf update || true
 
@@ -111,4 +136,9 @@ pre_upgrade() {
 
 post_upgrade() {
 	post_install
+}
+
+post_remove() {
+	rm -f /etc/dconf/db/local.d/20-voidbr-gnome-apps
+	dconf update || true
 }
