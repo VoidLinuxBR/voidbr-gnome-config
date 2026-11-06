@@ -118,9 +118,10 @@ export default class VoidBRShellTweaks extends Extension {
         // ex.: "qua 4 nov" (dia sem zero à esquerda)
         const date = `${now.format('%a')} ${now.get_day_of_month()} ${now.format('%b')}`;
 
+        // hora em destaque (15pt, negrito) e data em 12pt; o "pt" no size é do Pango >= 1.50
         this._clockText.set_markup(
-            `<span weight="bold">${GLib.markup_escape_text(time, -1)}</span>\n` +
-            `<span size="small">${GLib.markup_escape_text(date, -1)}</span>`);
+            `<span weight="bold" size="15pt">${GLib.markup_escape_text(time, -1)}</span>\n` +
+            `<span size="12pt">${GLib.markup_escape_text(date, -1)}</span>`);
     }
 
     _disableTwoLineClock() {

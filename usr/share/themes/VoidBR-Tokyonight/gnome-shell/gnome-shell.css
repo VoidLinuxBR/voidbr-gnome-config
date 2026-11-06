@@ -96,7 +96,7 @@
 
 /* relogio em 2 linhas (extensao voidbr-shell-tweaks): hora em cima, data embaixo */
 #panel.dashtopanelMainPanel .clock-display .clock {
-  font-size: 10.5pt;
+  font-size: 12pt; /* hora 15pt e data 12pt vêm do markup da extensão */
   text-align: center;
 }
 
