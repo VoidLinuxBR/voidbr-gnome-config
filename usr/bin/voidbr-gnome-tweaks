@@ -3,7 +3,7 @@
 #
 #   voidbr-gnome-tweaks
 #   Created: qui 05 nov 2026 00:40:00 -04
-#   Altered: seg 23 nov 2026 02:07:59 -04
+#   Altered: seg 23 nov 2026 02:27:18 -04
 #
 #   Copyright (c) 2026, Vilmar Catafesta <vcatafesta@gmail.com>
 #   Copyright (c) 2026, VoidLinuxBR Team
@@ -35,6 +35,11 @@
 #     tinha um botão próprio no fim da página e o Aplicar dizia "Nada mudou").
 #   - v1.6 (2026-11-23): Tela de login aparece também com o voidbr-sddm-themes antigo (com o botão
 #     próprio da aba); antes um parâmetro novo derrubava a aba sem aviso.
+#   - v1.7 (2026-11-23): Aparência: "Escala da interface". Mostra só as escalas
+#     que todos os monitores aceitam (o Mutter informa pelo D-Bus
+#     org.gnome.Mutter.DisplayConfig, o mesmo do gdctl e das Configurações) e
+#     aplica em todos, guardando no monitors.xml. "Permitir escalas quebradas"
+#     liga o scale-monitor-framebuffer do Mutter (125%, 150%, 175%…).
 #
 #   Redistribution and use in source and binary forms, with or without
 #   modification, are permitted provided that the following conditions
@@ -91,7 +96,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Pango", "1.0")
 from gi.repository import Gtk, GLib, Gio, Pango
 
-VERSAO = "1.6"
+VERSAO = "1.7"
 APP_ID = "org.voidbr.GnomeTweaks"
 
 CONFIG = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
@@ -120,6 +125,10 @@ S_GSCONNECT = "org.gnome.Shell.Extensions.GSConnect"
 S_FORGE = "org.gnome.shell.extensions.forge"
 S_PASTAS = "org.gnome.desktop.app-folders"
 S_PASTA = "org.gnome.desktop.app-folders.folder"
+S_MUTTER = "org.gnome.mutter"
+FRACIONARIA = "scale-monitor-framebuffer"  # recurso do Mutter: escalas quebradas no Wayland
+DC_NOME = "org.gnome.Mutter.DisplayConfig"
+DC_CAMINHO = "/org/gnome/Mutter/DisplayConfig"
 
 UUID_DTP = "dash-to-panel@jderose9.github.com"
 UUID_DTD = "dash-to-dock@micxgx.gmail.com"
@@ -608,6 +617,93 @@ def grade_ordenar(ligadas):
 #   valores: atual, Padrão VoidBR e Padrão GNOME
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+#   escala da interface (Mutter DisplayConfig, o mesmo D-Bus do gdctl)
+# ---------------------------------------------------------------------------
+
+def _tela():
+    """GetCurrentState do Mutter: (serial, monitores, lógicos, props) ou None."""
+    try:
+        proxy = Gio.DBusProxy.new_for_bus_sync(Gio.BusType.SESSION, Gio.DBusProxyFlags.NONE,
+                                               None, DC_NOME, DC_CAMINHO, DC_NOME, None)
+        return proxy.call_sync("GetCurrentState", None, Gio.DBusCallFlags.NONE, 3000,
+                               None).unpack()
+    except GLib.Error:
+        return None
+
+
+def _modo_atual(monitores, spec):
+    """(id do modo atual, escalas aceitas nele) do monitor `spec`."""
+    for m_spec, modos, _props in monitores:
+        if tuple(m_spec) == tuple(spec):
+            for modo in modos:
+                if modo[6].get("is-current"):
+                    return modo[0], [round(s, 4) for s in modo[5]]
+    return None, []
+
+
+def escalas_aceitas(estado=None):
+    """Escalas que todos os monitores ligados aceitam no modo atual."""
+    estado = estado or _tela()
+    if not estado:
+        return []
+    _serial, monitores, logicos, _props = estado
+    comuns = None
+    for _x, _y, _esc, _transf, _prim, specs, _lprops in logicos:
+        for spec in specs:
+            aceitas = set(_modo_atual(monitores, spec)[1])
+            comuns = aceitas if comuns is None else comuns & aceitas
+    return sorted(comuns or [])
+
+
+def escala_atual(estado=None):
+    estado = estado or _tela()
+    if not estado or not estado[2]:
+        return None
+    return round(estado[2][0][2], 4)
+
+
+def escala_aplicar(escala):
+    """Põe `escala` em todos os monitores e guarda (método 2 = persistente)."""
+    estado = _tela()
+    if not estado:
+        raise RuntimeError("o GNOME não respondeu (DisplayConfig)")
+    serial, monitores, logicos, props = estado
+    logico_layout = props.get("layout-mode", 1) == 1
+    velhas = {round(lg[2], 4) for lg in logicos}
+    novos = []
+    for x, y, esc, transf, prim, specs, _lprops in logicos:
+        if logico_layout and len(velhas) == 1 and esc:
+            # no layout lógico as posições são em pixels já escalados
+            x, y = round(x * esc / escala), round(y * esc / escala)
+        mons = []
+        for spec in specs:
+            modo, _aceitas = _modo_atual(monitores, spec)
+            mons.append((spec[0], modo, {}))
+        novos.append((x, y, escala, transf, prim, mons))
+    try:
+        proxy = Gio.DBusProxy.new_for_bus_sync(Gio.BusType.SESSION, Gio.DBusProxyFlags.NONE,
+                                               None, DC_NOME, DC_CAMINHO, DC_NOME, None)
+        proxy.call_sync("ApplyMonitorsConfig",
+                        GLib.Variant("(uua(iiduba(ssa{sv}))a{sv})", (serial, 2, novos, {})),
+                        Gio.DBusCallFlags.NONE, 10000, None)
+    except GLib.Error as e:
+        raise RuntimeError(e.message.split(":")[-1].strip()) from None
+
+
+def fracionaria_ligada():
+    return FRACIONARIA in (ler(S_MUTTER, "experimental-features") or [])
+
+
+def fracionaria_gravar(ligar):
+    atual = [f for f in (ler(S_MUTTER, "experimental-features") or []) if f != FRACIONARIA]
+    gravar(S_MUTTER, "experimental-features", atual + [FRACIONARIA] if ligar else atual)
+
+
+def rotulo_escala(escala):
+    return f"{round(escala * 100)}%"
+
+
 def valores_atuais():
     ext = ler(S_SHELL, "enabled-extensions") or []
     tema_shell = ler(S_THEME, "name") or ""
@@ -633,6 +729,8 @@ def valores_atuais():
         "categorias": categorias_ler(),
         "cat_apps": categorias_apps_atuais(),
         "cat_ordem": False,
+        "escala": escala_atual(),
+        "fracionaria": fracionaria_ligada(),
     }
 
 
@@ -773,6 +871,17 @@ def aplicar(v, antes):
         if mudou(k) and v[k]:
             gravar(schema, chave, v[k])
             feito.append(nome)
+
+    # --- escala da interface ---
+    if mudou("fracionaria"):
+        fracionaria_gravar(v["fracionaria"])
+        feito.append("escalas quebradas " + ("ligadas" if v["fracionaria"] else "desligadas"))
+    if mudou("escala"):
+        try:
+            escala_aplicar(v["escala"])
+            feito.append(f"escala da interface ({rotulo_escala(v['escala'])})")
+        except RuntimeError as e:
+            feito.append(f"⚠️ escala não mudou: {e}")
 
     # --- GSConnect e Forge ---
     if mudou("gsconnect_servico"):
@@ -1063,7 +1172,31 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         self.w_fonte = self._botao_fonte(g, "Fonte da interface")
         self.w_fonte_mono = self._botao_fonte(g, "Fonte monoespaçada")
         self.w_botoes = self._lista(g, "Botões da janela", BOTOES_JANELA)
+        self._secao(g, "Tamanho")
+        self.w_escala = self._lista(g, "Escala da interface", [],
+                                    "Aumenta tudo na tela (útil em telas de alta resolução). Só "
+                                    "aparecem as escalas que todos os seus monitores aceitam; vale "
+                                    "para todos.")
+        self.w_fracionaria = self._chave(g, "Permitir escalas quebradas (125%, 150%…)",
+                                         "Recurso do GNOME ainda experimental. Depois de ligar e "
+                                         "Aplicar, as escalas novas entram na lista (se não "
+                                         "entrarem, saia e entre de novo). Apps antigos (X11) "
+                                         "podem ficar um pouco borrados.")
         return g
+
+    def _preencher_escalas(self, atual):
+        """A lista muda com o monitor e com as escalas quebradas: refeita a cada carga."""
+        ops = [(e, rotulo_escala(e)) for e in escalas_aceitas()]
+        if not ops:
+            ops = [(None, "— o GNOME não informou (rodando fora do GNOME?) —")]
+        self.w_escala._opcoes = ops
+        self.w_escala.set_model(Gtk.StringList.new([r for _v, r in ops]))
+        if atual and ops[0][0] is not None and atual not in [e for e, _r in ops]:
+            ops.append((atual, rotulo_escala(atual) + " (atual)"))
+        self.w_escala._opcoes = ops
+        self.w_escala.set_model(Gtk.StringList.new([r for _v, r in ops]))
+        self.w_escala.set_sensitive(ops[0][0] is not None)
+        _escolha(self.w_escala, self.w_escala._opcoes, atual)
 
     def _botao_fonte(self, g, texto):
         self._rotulo(g, texto)
@@ -1214,6 +1347,11 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         self.w_cat_on.set_active(ligado)
         self._ao_mudar_categorias(self.w_cat_on)
         self.w_cat_ordem.set_active(bool(v["cat_ordem"]))
+        # Padrão VoidBR/GNOME não mexem na escala: mostram a que está em uso
+        self._preencher_escalas(v.get("escala", self.antes.get("escala") if hasattr(self, "antes")
+                                      else None))
+        if v.get("fracionaria") is not None:
+            self.w_fracionaria.set_active(v["fracionaria"])
 
     @staticmethod
     def _set_fonte(botao, texto):
@@ -1250,6 +1388,8 @@ class JanelaTweaks(Gtk.ApplicationWindow):
             "cat_apps": apps_voidbr(),
             "cat_ordem": self.w_cat_ordem.get_active(),
             "fav_voidbr": self.fav_voidbr,
+            "escala": self._valor_dd(self.w_escala),
+            "fracionaria": self.w_fracionaria.get_active(),
         }
 
     def mostrar_papel(self, c):
@@ -1366,9 +1506,10 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         return False
 
     def _mensagem_final(self, feito):
-        if not feito and not getattr(self.aba_login, "ocupado", False):
-            self.status("ℹ️ Nada mudou.")
-            return
+        if not feito:
+            if not getattr(self.aba_login, "ocupado", False):
+                self.status("ℹ️ Nada mudou.")
+            return  # só a tela de login: ela mesma avisa quando terminar
         extra = ""
         if any(f in feito for f in ("extensões", "Visão Geral no login")):
             extra = " Algumas mudanças valem no próximo login."
