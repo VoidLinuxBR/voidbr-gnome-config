@@ -3,7 +3,7 @@
 #
 #   voidbr-gnome-tweaks
 #   Created: qui 05 nov 2026 00:40:00 -04
-#   Altered: seg 23 nov 2026 01:25:31 -04
+#   Altered: seg 23 nov 2026 01:55:22 -04
 #
 #   Copyright (c) 2026, Vilmar Catafesta <vcatafesta@gmail.com>
 #   Copyright (c) 2026, VoidLinuxBR Team
@@ -31,6 +31,8 @@
 #   - v1.4 (2026-11-23): Aba "🔐 Tela de login": tema do SDDM com prévia, Testar
 #     e fundo próprio. Vem do voidbr-sddm-themes (/usr/lib/voidbr/voidbr_sddm_aba.py)
 #     e troca pelo pkexec voidbr-sddm-theme; sem o pacote, a aba não aparece.
+#   - v1.5 (2026-11-23): Tela de login vai no mesmo ✅ Aplicar do app (antes a aba
+#     tinha um botão próprio no fim da página e o Aplicar dizia "Nada mudou").
 #
 #   Redistribution and use in source and binary forms, with or without
 #   modification, are permitted provided that the following conditions
@@ -87,7 +89,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Pango", "1.0")
 from gi.repository import Gtk, GLib, Gio, Pango
 
-VERSAO = "1.4"
+VERSAO = "1.5"
 APP_ID = "org.voidbr.GnomeTweaks"
 
 CONFIG = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
@@ -903,11 +905,13 @@ class JanelaTweaks(Gtk.ApplicationWindow):
             rolagem.set_child(fabrica())
             self.indice_aba[chave] = self.abas.append_page(rolagem, Gtk.Label(label=rotulo))
         # aba "Tela de login": vem do voidbr-sddm-themes (só aparece se ele estiver instalado)
+        self.aba_login = None
         try:
             sys.path.insert(0, "/usr/lib/voidbr")
             import voidbr_sddm_aba
             rolagem = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
-            rolagem.set_child(voidbr_sddm_aba.criar_aba(self))
+            self.aba_login = voidbr_sddm_aba.criar_aba(self, com_botao=False)
+            rolagem.set_child(self.aba_login)
             self.indice_aba["login"] = self.abas.append_page(
                 rolagem, Gtk.Label(label="🔐 Tela de login"))
             self.abas.set_scrollable(True)
@@ -1322,6 +1326,9 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         dlg.choose(self, None, resposta)
 
     def ao_clicar_aplicar(self, *_):
+        # a tela de login (aba do voidbr-sddm-themes) vai junto no mesmo Aplicar
+        if self.aba_login is not None and self.aba_login.pendente():
+            self.aba_login.aplicar()
         v = self.coletar()
         feito = aplicar(v, self.antes)
         papel = self.coletar_papel()
@@ -1350,7 +1357,7 @@ class JanelaTweaks(Gtk.ApplicationWindow):
         return False
 
     def _mensagem_final(self, feito):
-        if not feito:
+        if not feito and not (self.aba_login and self.aba_login.ocupado):
             self.status("ℹ️ Nada mudou.")
             return
         extra = ""
